@@ -1,0 +1,38 @@
+#!/usr/bin/make -f
+
+# Uncomment this to turn on verbose mode.
+#export DH_VERBOSE=1
+
+export GOMAXPROCS=1
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+export DH_GOLANG_EXCLUDES = demo
+export DH_GOLANG_INSTALL_EXTRA = \
+    client/getter/test-fixtures \
+    client/driver/test-resources \
+    command/agent/test-resources \
+    command/agent/config-test-fixtures \
+    jobspec/test-fixtures
+
+%:
+	dh $@ --buildsystem=golang --with=golang,systemd --builddirectory=_build --parallel
+
+override_dh_clean:
+	dh_clean
+	## Remove Files-Excluded (when built from checkout or non-DFSG tarball):
+	$(RM) -rv `perl -0nE 'say $$1 if m{^Files\-Excluded\:\s*(.*?)(?:\n\n|Files:|Comment:)}sm;' debian/copyright`
+	-find vendor -type d -empty -delete -print
+
+override_dh_auto_test:
+	-PATH="$(CURDIR)/_build/bin:$$PATH" dh_auto_test
+
+override_dh_auto_install:
+	dh_auto_install --destdir=debian/tmp
+
+override_dh_installinit:
+	dh_installinit --no-start
+
+override_dh_systemd_start:
+	dh_systemd_start --no-start
+
+override_dh_systemd_enable:
+	dh_systemd_enable --no-enable

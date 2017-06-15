@@ -1,0 +1,5 @@
+## Nomad service running as root
+
+"The Nomad Servers do not need to be root but the clients do as they are
+using OS isolation mechanisms that require root privilege."
+ -- https://github.com/hashicorp/nomad/issues/948#issuecomment-199373507
