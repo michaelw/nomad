@@ -1,2 +1,2 @@
-/etc/nomad
+/etc/nomad.d
 /var/lib/nomad

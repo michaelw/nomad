@@ -3,6 +3,8 @@
 # Uncomment this to turn on verbose mode.
 #export DH_VERBOSE=1
 
+include /usr/share/dpkg/default.mk
+
 export GOMAXPROCS=1
 export DEB_BUILD_MAINT_OPTIONS = hardening=+all
 export DH_GOLANG_EXCLUDES = demo
@@ -13,17 +15,27 @@ export DH_GOLANG_INSTALL_EXTRA = \
     command/agent/config-test-fixtures \
     jobspec/test-fixtures
 
+# Get the git commit
+GIT_COMMIT := $(shell git rev-parse HEAD)
+GIT_DIRTY  := $(shell test -n "`git status --porcelain`" && echo "+CHANGES" || true)
+LDFLAG      = "main.GitCommit=${GIT_COMMIT}${GIT_DIRTY}"
+
+
 %:
 	dh $@ --buildsystem=golang --with=golang,systemd --builddirectory=_build --parallel
 
+override_dh_auto_build:
+	mkdir -p go/src/github.com/hashicorp usr/bin
+	ln -sfT $(CURDIR) go/src/github.com/hashicorp/nomad
+	cd go/src/github.com/hashicorp/nomad && make bootstrap
+	cd go/src/github.com/hashicorp/nomad && go build -ldflags "-X $(LDFLAG)" -o $(CURDIR)/usr/bin/nomad
+
+# no tests until we figure out how to run the test suite without sudo
+override_dh_auto_test:
+
 override_dh_clean:
 	dh_clean
-	## Remove Files-Excluded (when built from checkout or non-DFSG tarball):
-	$(RM) -rv `perl -0nE 'say $$1 if m{^Files\-Excluded\:\s*(.*?)(?:\n\n|Files:|Comment:)}sm;' debian/copyright`
-	-find vendor -type d -empty -delete -print
-
-override_dh_auto_test:
-	-PATH="$(CURDIR)/_build/bin:$$PATH" dh_auto_test
+	$(RM) -r _build go usr/bin
 
 override_dh_auto_install:
 	dh_auto_install --destdir=debian/tmp

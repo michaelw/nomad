@@ -1,3 +1,13 @@
+nomad (0.5.6-1instart1) precise; urgency=low
+
+  * new upstream release
+  * don't depend on packaged (old) upstream libraries
+  * don't clean committed files
+  * don't run test suite (run with sudo)
+  * change config dir to /etc/nomad.d, to conform with upstream
+
+ -- Michael Weber <mweber@instartlogic.com>  Fri, 16 Jun 2017 14:07:52 -0700
+
 nomad (0.4.0+dfsg-1) unstable; urgency=medium
 
   * New upstream release [June 2016] (Closes: #831036).

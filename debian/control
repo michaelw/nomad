@@ -3,65 +3,12 @@ Section: devel
 Priority: extra
 Maintainer: Dmitry Smirnov <onlyjob@debian.org>
 Uploaders: Debian Go Packaging Team <pkg-go-maintainers@lists.alioth.debian.org>
-Build-Depends: debhelper (>= 9), dh-systemd, dh-golang
-               ,golang-go
-    ,golang-github-armon-go-metrics-dev
-    ,golang-github-armon-go-radix-dev
-    ,golang-github-boltdb-bolt-dev
-    ,golang-github-coreos-go-systemd-dev
-    ,golang-github-datadog-datadog-go-dev
-    ,golang-github-davecgh-go-spew-dev
-    ,golang-github-docker-docker-dev
-    ,golang-github-docker-go-units-dev
-    ,golang-github-dustin-go-humanize-dev
-    ,golang-github-fsouza-go-dockerclient-dev (>= 0.0+git20160622~)
-    ,golang-github-go-ini-ini-dev
-    ,golang-dbus-dev | golang-github-godbus-dbus-dev
-    ,golang-goprotobuf-dev | golang-github-golang-protobuf-dev
-    ,golang-github-gorhill-cronexpr-dev
-    ,golang-github-hashicorp-consul-dev (>= 0.6.4~dfsg-2~)
-    ,golang-github-hashicorp-errwrap-dev
-    ,golang-github-hashicorp-go-checkpoint-dev
-    ,golang-github-hashicorp-go-cleanhttp-dev
-    ,golang-github-hashicorp-go-getter-dev
-    ,golang-github-hashicorp-go-immutable-radix-dev
-    ,golang-github-hashicorp-go-memdb-dev
-    ,golang-github-hashicorp-go-msgpack-dev
-    ,golang-github-hashicorp-go-multierror-dev
-    ,golang-github-hashicorp-go-plugin-dev
-    ,golang-github-hashicorp-go-syslog-dev
-    ,golang-github-hashicorp-go-version-dev
-    ,golang-github-hashicorp-golang-lru-dev
-    ,golang-github-hashicorp-hcl-dev
-    ,golang-github-hashicorp-logutils-dev
-    ,golang-github-hashicorp-memberlist-dev
-    ,golang-github-hashicorp-net-rpc-msgpackrpc-dev (>= 0.0~git20151116~)
-    ,golang-github-hashicorp-raft-dev (>= 0.0~git20160317~)
-    ,golang-github-hashicorp-raft-boltdb-dev
-    ,golang-github-hashicorp-scada-client-dev (>= 0.0~git20160601~)
-    ,golang-github-hashicorp-serf-dev
-    ,golang-github-hashicorp-yamux-dev
-    ,golang-github-jmespath-go-jmespath-dev
-    ,golang-github-kardianos-osext-dev
-    ,golang-github-mattn-go-isatty-dev
-    ,golang-github-nytimes-gziphandler-dev
-    ,golang-protobuf-extensions-dev | golang-github-matttproud-protobuf-extensions-dev
-    ,golang-github-mitchellh-cli-dev (>= 0.0~git20160203~)
-    ,golang-github-mitchellh-copystructure-dev
-    ,golang-github-mitchellh-colorstring-dev
-    ,golang-github-mitchellh-go-ps-dev
-    ,golang-github-mitchellh-hashstructure-dev
-    ,golang-github-mitchellh-mapstructure-dev
-    ,golang-github-mitchellh-reflectwalk-dev
-    ,golang-github-shirou-gopsutil-dev
-#    ,golang-github-opencontainers-runc-dev
-    ,golang-prometheus-client-dev | golang-github-prometheus-client-dev
-#    ,golang-github-prometheus-client-model-dev
-    ,golang-github-prometheus-common-dev
-    ,golang-github-ryanuber-columnize-dev (>= 2.1.0~)
-    ,golang-github-ugorji-go-codec-dev
-    ,golang-golang-x-sys-dev
-    ,golang-golang-x-tools-dev
+Build-Depends: debhelper (>= 9),
+ dh-systemd,
+ dh-golang,
+ git,
+ ca-certificates,
+ golang-go
 Standards-Version: 3.9.8
 Homepage: https://github.com/hashicorp/nomad
 Vcs-Browser: https://anonscm.debian.org/cgit/pkg-go/packages/nomad.git
@@ -71,10 +18,9 @@ XS-Go-Import-Path: github.com/hashicorp/nomad
 Package: nomad
 Architecture: any
 Built-Using: ${misc:Built-Using}
-Depends: ${shlibs:Depends},
-         ${misc:Depends}
-    ,pipexec
-    ,procps
+Depends: ${shlibs:Depends}, ${misc:Depends},
+ pipexec,
+ procps
 Description: distributed, highly available, datacenter-aware scheduler
  Nomad is a cluster manager, designed for both long lived services and
  short lived batch processing workloads. Developers use a declarative job

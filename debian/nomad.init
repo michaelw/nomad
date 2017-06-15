@@ -16,7 +16,7 @@ DAEMON=/usr/bin/$NAME
 PIDFILE=/var/run/$NAME.pid
 DAEMON_USER=root
 DAEMON_GROUP=root
-DAEMON_ARGS="agent -config /etc/nomad"
+DAEMON_ARGS="agent -config /etc/nomad.d"
 
 # Exit if executable is not installed
 [ -x "$DAEMON" ] || exit 0

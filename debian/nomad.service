@@ -4,7 +4,7 @@ Documentation=https://nomadproject.io/docs/
 After=network.target
 
 [Service]
-Environment="DAEMON_ARGS=agent -config /etc/nomad"
+Environment="DAEMON_ARGS=agent -config /etc/nomad.d"
 EnvironmentFile=-/etc/default/%p
 ExecStart=/usr/bin/nomad $DAEMON_ARGS
 ExecReload=/bin/kill -HUP $MAINPID
