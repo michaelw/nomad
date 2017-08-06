@@ -1,3 +1,9 @@
+nomad (0.6.0-1instart1) xenial; urgency=low
+
+  * new upstream release 0.6.0
+
+ -- Michael Weber <mweber@instartlogic.com>  Sat, 05 Aug 2017 21:34:09 -0700
+
 nomad (0.5.6-1instart1) precise; urgency=low
 
   * new upstream release
