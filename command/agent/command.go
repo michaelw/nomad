@@ -27,6 +27,7 @@ import (
 	"github.com/hashicorp/nomad/nomad/structs/config"
 	"github.com/hashicorp/scada-client/scada"
 	"github.com/mitchellh/cli"
+	"github.com/posener/complete"
 )
 
 // gracefulTimeout controls how long we wait before forcefully terminating
@@ -350,7 +351,7 @@ func (c *Command) setupAgent(config *Config, logOutput io.Writer) error {
 	}
 
 	// Setup the HTTP server
-	http, err := NewHTTPServer(agent, config, logOutput)
+	http, err := NewHTTPServer(agent, config)
 	if err != nil {
 		agent.Shutdown()
 		c.Ui.Error(fmt.Sprintf("Error starting http server: %s", err))
@@ -406,6 +407,20 @@ func (c *Command) checkpointResults(results *checkpoint.CheckResponse, err error
 			c.Ui.Error(fmt.Sprintf("Bulletin [%s]: %s (%s)", alert.Level, alert.Message, alert.URL))
 		}
 	}
+}
+
+func (c *Command) AutocompleteFlags() complete.Flags {
+	configFilePredictor := complete.PredictOr(
+		complete.PredictFiles("*.json"),
+		complete.PredictFiles("*.hcl"))
+
+	return map[string]complete.Predictor{
+		"-config": configFilePredictor,
+	}
+}
+
+func (c *Command) AutocompleteArgs() complete.Predictor {
+	return nil
 }
 
 func (c *Command) Run(args []string) int {
@@ -475,12 +490,6 @@ func (c *Command) Run(args []string) int {
 	info["log level"] = config.LogLevel
 	info["server"] = strconv.FormatBool(config.Server.Enabled)
 	info["region"] = fmt.Sprintf("%s (DC: %s)", config.Region, config.Datacenter)
-	if config.Atlas != nil && config.Atlas.Infrastructure != "" {
-		info["atlas"] = fmt.Sprintf("(Infrastructure: '%s' Join: %v)",
-			config.Atlas.Infrastructure, config.Atlas.Join)
-	} else {
-		info["atlas"] = "<disabled>"
-	}
 
 	// Sort the keys for output
 	infoKeys := make([]string, 0, len(info))

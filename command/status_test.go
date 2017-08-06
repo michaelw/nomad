@@ -5,19 +5,18 @@ import (
 	"testing"
 
 	"github.com/hashicorp/nomad/api"
-	"github.com/hashicorp/nomad/testutil"
 	"github.com/mitchellh/cli"
 )
 
 func TestStatusCommand_Implements(t *testing.T) {
+	t.Parallel()
 	var _ cli.Command = &StatusCommand{}
 }
 
 func TestStatusCommand_Run(t *testing.T) {
-	srv, client, url := testServer(t, func(c *testutil.TestServerConfig) {
-		c.DevMode = true
-	})
-	defer srv.Stop()
+	t.Parallel()
+	srv, client, url := testServer(t, true, nil)
+	defer srv.Shutdown()
 
 	ui := new(cli.MockUi)
 	cmd := &StatusCommand{Meta: Meta{Ui: ui}}
@@ -37,20 +36,20 @@ func TestStatusCommand_Run(t *testing.T) {
 
 	// Register two jobs
 	job1 := testJob("job1_sfx")
-	evalId1, _, err := client.Jobs().Register(job1, nil)
+	resp, _, err := client.Jobs().Register(job1, nil)
 	if err != nil {
 		t.Fatalf("err: %s", err)
 	}
-	if code := waitForSuccess(ui, client, fullId, t, evalId1); code != 0 {
+	if code := waitForSuccess(ui, client, fullId, t, resp.EvalID); code != 0 {
 		t.Fatalf("status code non zero saw %d", code)
 	}
 
 	job2 := testJob("job2_sfx")
-	evalId2, _, err := client.Jobs().Register(job2, nil)
+	resp2, _, err := client.Jobs().Register(job2, nil)
 	if err != nil {
 		t.Fatalf("err: %s", err)
 	}
-	if code := waitForSuccess(ui, client, fullId, t, evalId2); code != 0 {
+	if code := waitForSuccess(ui, client, fullId, t, resp2.EvalID); code != 0 {
 		t.Fatalf("status code non zero saw %d", code)
 	}
 
@@ -113,16 +112,18 @@ func TestStatusCommand_Run(t *testing.T) {
 	if !strings.Contains(out, "Created At") {
 		t.Fatal("should have created header")
 	}
+	ui.ErrorWriter.Reset()
 	ui.OutputWriter.Reset()
 
 	// Query jobs with prefix match
-	if code := cmd.Run([]string{"-address=" + url, "job"}); code != 0 {
-		t.Fatalf("expected exit 0, got: %d", code)
+	if code := cmd.Run([]string{"-address=" + url, "job"}); code != 1 {
+		t.Fatalf("expected exit 1, got: %d", code)
 	}
-	out = ui.OutputWriter.String()
+	out = ui.ErrorWriter.String()
 	if !strings.Contains(out, "job1_sfx") || !strings.Contains(out, "job2_sfx") {
 		t.Fatalf("expected job1_sfx and job2_sfx, got: %s", out)
 	}
+	ui.ErrorWriter.Reset()
 	ui.OutputWriter.Reset()
 
 	// Query a single job with prefix match
@@ -149,7 +150,7 @@ func TestStatusCommand_Run(t *testing.T) {
 	if strings.Contains(out, "Allocations") {
 		t.Fatalf("should not dump allocations")
 	}
-	if strings.Contains(out, evalId1) {
+	if strings.Contains(out, resp.EvalID) {
 		t.Fatalf("should not contain full identifiers, got %s", out)
 	}
 	ui.OutputWriter.Reset()
@@ -159,12 +160,13 @@ func TestStatusCommand_Run(t *testing.T) {
 		t.Fatalf("expected exit 0, got: %d", code)
 	}
 	out = ui.OutputWriter.String()
-	if !strings.Contains(out, evalId1) {
+	if !strings.Contains(out, resp.EvalID) {
 		t.Fatalf("should contain full identifiers, got %s", out)
 	}
 }
 
 func TestStatusCommand_Fails(t *testing.T) {
+	t.Parallel()
 	ui := new(cli.MockUi)
 	cmd := &StatusCommand{Meta: Meta{Ui: ui}}
 

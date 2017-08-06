@@ -126,7 +126,7 @@ role definition or as a blacklist by using `disallowed_policies`.
 
 If using `allowed_policies`, tasks may only request Vault policies that are in
 the list. If `disallowed_policies` is used, task may request any policy that is
-not in the `disallowed_policies` list. There are tradeoffs to both approaches
+not in the `disallowed_policies` list. There are trade-offs to both approaches
 but generally it is easier to use the blacklist approach and add policies that
 you would not like tasks to have access to into the `disallowed_policies` list.
 
@@ -155,14 +155,14 @@ documentation for all possible fields and more complete documentation.
   under Nomad should have access to.
 
 *    `disallowed_policies` - Specifies the list of disallowed policies as a
-     comma-seperated string. This list should contain all policies that jobs running
+     comma-separated string. This list should contain all policies that jobs running
      under Nomad should **not** have access to. The policy created above that
      grants Nomad the ability to generate tokens from the token role should be
      included in list of disallowed policies. This prevents tokens created by
      Nomad from generating new tokens with different policies than those granted
      by Nomad.
 
-     A regression occured in Vault 0.6.4 when validating token creation using a
+     A regression occurred in Vault 0.6.4 when validating token creation using a
      token role with `disallowed_policies` such that it is not usable with
      Nomad. This will be remedied in 0.6.5 and does not effect earlier versions
      of Vault.
@@ -226,7 +226,7 @@ After the token role is created, a token suitable for the Nomad servers may be
 retrieved by issuing the following Vault command:
 
 ```
-$ vault token-create -policy nomad-server -period 72h
+$ vault token-create -policy nomad-server -period 72h -orphan
 Key             Value
 ---             -----
 token           f02f01c2-c0d1-7cb7-6b88-8a14fada58c0
@@ -235,6 +235,10 @@ token_duration  259200s
 token_renewable true
 token_policies  [default nomad-server]
 ```
+
+`-orphan` is included above to prevent revocation of the token when its parent expires. 
+See the [Vault token hierarchy](https://www.vaultproject.io/docs/concepts/tokens.html#token-hierarchies-and-orphan-tokens) 
+documentation for more information.
 
 The token can then be set in the server configuration's [vault block][config],
 as a command-line flag, or via an environment variable.

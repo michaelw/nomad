@@ -31,6 +31,9 @@ func javaLocated() bool {
 
 // The fingerprinter test should always pass, even if Java is not installed.
 func TestJavaDriver_Fingerprint(t *testing.T) {
+	if !testutil.IsTravis() {
+		t.Parallel()
+	}
 	ctestutils.JavaCompatible(t)
 	task := &structs.Task{
 		Name:      "foo",
@@ -67,6 +70,9 @@ func TestJavaDriver_Fingerprint(t *testing.T) {
 }
 
 func TestJavaDriver_StartOpen_Wait(t *testing.T) {
+	if !testutil.IsTravis() {
+		t.Parallel()
+	}
 	if !javaLocated() {
 		t.Skip("Java not found; skipping")
 	}
@@ -97,16 +103,13 @@ func TestJavaDriver_StartOpen_Wait(t *testing.T) {
 	if _, err := d.Prestart(ctx.ExecCtx, task); err != nil {
 		t.Fatalf("prestart err: %v", err)
 	}
-	handle, err := d.Start(ctx.ExecCtx, task)
+	resp, err := d.Start(ctx.ExecCtx, task)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
-	if handle == nil {
-		t.Fatalf("missing handle")
-	}
 
 	// Attempt to open
-	handle2, err := d.Open(ctx.ExecCtx, handle.ID())
+	handle2, err := d.Open(ctx.ExecCtx, resp.Handle.ID())
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -118,11 +121,14 @@ func TestJavaDriver_StartOpen_Wait(t *testing.T) {
 
 	// There is a race condition between the handle waiting and killing. One
 	// will return an error.
-	handle.Kill()
+	resp.Handle.Kill()
 	handle2.Kill()
 }
 
 func TestJavaDriver_Start_Wait(t *testing.T) {
+	if !testutil.IsTravis() {
+		t.Parallel()
+	}
 	if !javaLocated() {
 		t.Skip("Java not found; skipping")
 	}
@@ -133,6 +139,7 @@ func TestJavaDriver_Start_Wait(t *testing.T) {
 		Driver: "java",
 		Config: map[string]interface{}{
 			"jar_path": "demoapp.jar",
+			"args":     []string{"1"},
 		},
 		LogConfig: &structs.LogConfig{
 			MaxFiles:      10,
@@ -152,23 +159,19 @@ func TestJavaDriver_Start_Wait(t *testing.T) {
 	if _, err := d.Prestart(ctx.ExecCtx, task); err != nil {
 		t.Fatalf("prestart err: %v", err)
 	}
-	handle, err := d.Start(ctx.ExecCtx, task)
+	resp, err := d.Start(ctx.ExecCtx, task)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
-	if handle == nil {
-		t.Fatalf("missing handle")
-	}
 
-	// Task should terminate quickly
+	// Task should terminate after 1 seconds
 	select {
-	case res := <-handle.WaitCh():
+	case res := <-resp.Handle.WaitCh():
 		if !res.Successful() {
-			t.Fatalf("err: %v", res)
+			t.Fatalf("err: %v", res.String())
 		}
-	case <-time.After(time.Duration(testutil.TestMultiplier()*5) * time.Second):
-		// expect the timeout b/c it's a long lived process
-		break
+	case <-time.After(5 * time.Second):
+		t.Fatalf("timeout")
 	}
 
 	// Get the stdout of the process and assrt that it's not empty
@@ -182,13 +185,16 @@ func TestJavaDriver_Start_Wait(t *testing.T) {
 	}
 
 	// need to kill long lived process
-	err = handle.Kill()
+	err = resp.Handle.Kill()
 	if err != nil {
 		t.Fatalf("Error: %s", err)
 	}
 }
 
 func TestJavaDriver_Start_Kill_Wait(t *testing.T) {
+	if !testutil.IsTravis() {
+		t.Parallel()
+	}
 	if !javaLocated() {
 		t.Skip("Java not found; skipping")
 	}
@@ -218,17 +224,14 @@ func TestJavaDriver_Start_Kill_Wait(t *testing.T) {
 	if _, err := d.Prestart(ctx.ExecCtx, task); err != nil {
 		t.Fatalf("prestart err: %v", err)
 	}
-	handle, err := d.Start(ctx.ExecCtx, task)
+	resp, err := d.Start(ctx.ExecCtx, task)
 	if err != nil {
 		t.Fatalf("err: %v", err)
-	}
-	if handle == nil {
-		t.Fatalf("missing handle")
 	}
 
 	go func() {
 		time.Sleep(100 * time.Millisecond)
-		err := handle.Kill()
+		err := resp.Handle.Kill()
 		if err != nil {
 			t.Fatalf("err: %v", err)
 		}
@@ -236,7 +239,7 @@ func TestJavaDriver_Start_Kill_Wait(t *testing.T) {
 
 	// Task should terminate quickly
 	select {
-	case res := <-handle.WaitCh():
+	case res := <-resp.Handle.WaitCh():
 		if res.Successful() {
 			t.Fatal("should err")
 		}
@@ -244,13 +247,16 @@ func TestJavaDriver_Start_Kill_Wait(t *testing.T) {
 		t.Fatalf("timeout")
 
 		// Need to kill long lived process
-		if err = handle.Kill(); err != nil {
+		if err = resp.Handle.Kill(); err != nil {
 			t.Fatalf("Error: %s", err)
 		}
 	}
 }
 
 func TestJavaDriver_Signal(t *testing.T) {
+	if !testutil.IsTravis() {
+		t.Parallel()
+	}
 	if !javaLocated() {
 		t.Skip("Java not found; skipping")
 	}
@@ -280,17 +286,14 @@ func TestJavaDriver_Signal(t *testing.T) {
 	if _, err := d.Prestart(ctx.ExecCtx, task); err != nil {
 		t.Fatalf("prestart err: %v", err)
 	}
-	handle, err := d.Start(ctx.ExecCtx, task)
+	resp, err := d.Start(ctx.ExecCtx, task)
 	if err != nil {
 		t.Fatalf("err: %v", err)
-	}
-	if handle == nil {
-		t.Fatalf("missing handle")
 	}
 
 	go func() {
 		time.Sleep(100 * time.Millisecond)
-		err := handle.Signal(syscall.SIGHUP)
+		err := resp.Handle.Signal(syscall.SIGHUP)
 		if err != nil {
 			t.Fatalf("err: %v", err)
 		}
@@ -298,7 +301,7 @@ func TestJavaDriver_Signal(t *testing.T) {
 
 	// Task should terminate quickly
 	select {
-	case res := <-handle.WaitCh():
+	case res := <-resp.Handle.WaitCh():
 		if res.Successful() {
 			t.Fatal("should err")
 		}
@@ -306,15 +309,21 @@ func TestJavaDriver_Signal(t *testing.T) {
 		t.Fatalf("timeout")
 
 		// Need to kill long lived process
-		if err = handle.Kill(); err != nil {
+		if err = resp.Handle.Kill(); err != nil {
 			t.Fatalf("Error: %s", err)
 		}
 	}
 }
 
-func TestJavaDriverUser(t *testing.T) {
+func TestJavaDriver_User(t *testing.T) {
+	if !testutil.IsTravis() {
+		t.Parallel()
+	}
 	if !javaLocated() {
 		t.Skip("Java not found; skipping")
+	}
+	if runtime.GOOS != "linux" {
+		t.Skip("Linux only test")
 	}
 
 	ctestutils.JavaCompatible(t)
@@ -339,9 +348,9 @@ func TestJavaDriverUser(t *testing.T) {
 	if _, err := d.Prestart(ctx.ExecCtx, task); err != nil {
 		t.Fatalf("prestart err: %v", err)
 	}
-	handle, err := d.Start(ctx.ExecCtx, task)
+	resp, err := d.Start(ctx.ExecCtx, task)
 	if err == nil {
-		handle.Kill()
+		resp.Handle.Kill()
 		t.Fatalf("Should've failed")
 	}
 	msg := "user alice"
@@ -351,6 +360,9 @@ func TestJavaDriverUser(t *testing.T) {
 }
 
 func TestJavaDriver_Start_Wait_Class(t *testing.T) {
+	if !testutil.IsTravis() {
+		t.Parallel()
+	}
 	if !javaLocated() {
 		t.Skip("Java not found; skipping")
 	}
@@ -362,6 +374,7 @@ func TestJavaDriver_Start_Wait_Class(t *testing.T) {
 		Config: map[string]interface{}{
 			"class_path": "${NOMAD_TASK_DIR}",
 			"class":      "Hello",
+			"args":       []string{"1"},
 		},
 		LogConfig: &structs.LogConfig{
 			MaxFiles:      10,
@@ -381,23 +394,19 @@ func TestJavaDriver_Start_Wait_Class(t *testing.T) {
 	if _, err := d.Prestart(ctx.ExecCtx, task); err != nil {
 		t.Fatalf("prestart err: %v", err)
 	}
-	handle, err := d.Start(ctx.ExecCtx, task)
+	resp, err := d.Start(ctx.ExecCtx, task)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
-	if handle == nil {
-		t.Fatalf("missing handle")
-	}
 
-	// Task should terminate quickly
+	// Task should terminate after 1 seconds
 	select {
-	case res := <-handle.WaitCh():
+	case res := <-resp.Handle.WaitCh():
 		if !res.Successful() {
-			t.Fatalf("err: %v", res)
+			t.Fatalf("err: %v", res.String())
 		}
-	case <-time.After(time.Duration(testutil.TestMultiplier()*5) * time.Second):
-		// expect the timeout b/c it's a long lived process
-		break
+	case <-time.After(5 * time.Second):
+		t.Fatalf("timeout")
 	}
 
 	// Get the stdout of the process and assrt that it's not empty
@@ -411,8 +420,7 @@ func TestJavaDriver_Start_Wait_Class(t *testing.T) {
 	}
 
 	// need to kill long lived process
-	err = handle.Kill()
-	if err != nil {
+	if err := resp.Handle.Kill(); err != nil {
 		t.Fatalf("Error: %s", err)
 	}
 }

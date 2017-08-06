@@ -7,6 +7,8 @@ import (
 	multierror "github.com/hashicorp/go-multierror"
 	"github.com/hashicorp/nomad/api"
 	"github.com/hashicorp/nomad/command/agent"
+	"github.com/hashicorp/nomad/nomad/structs"
+	"github.com/posener/complete"
 )
 
 type ValidateCommand struct {
@@ -30,6 +32,14 @@ Usage: nomad validate [options] <path>
 
 func (c *ValidateCommand) Synopsis() string {
 	return "Checks if a given job specification is valid"
+}
+
+func (c *ValidateCommand) AutocompleteFlags() complete.Flags {
+	return nil
+}
+
+func (c *ValidateCommand) AutocompleteArgs() complete.Predictor {
+	return complete.PredictOr(complete.PredictFiles("*.nomad"), complete.PredictFiles("*.hcl"))
 }
 
 func (c *ValidateCommand) Run(args []string) int {
@@ -87,6 +97,12 @@ func (c *ValidateCommand) Run(args []string) int {
 		return 1
 	}
 
+	// Print any warnings if there are any
+	if jr.Warnings != "" {
+		c.Ui.Output(
+			c.Colorize().Color(fmt.Sprintf("[bold][yellow]Job Warnings:\n%s[reset]\n", jr.Warnings)))
+	}
+
 	// Done!
 	c.Ui.Output(
 		c.Colorize().Color("[bold][green]Job validation successful[reset]"))
@@ -98,7 +114,7 @@ func (c *ValidateCommand) validateLocal(aj *api.Job) (*api.JobValidateResponse, 
 	var out api.JobValidateResponse
 
 	job := agent.ApiJobToStructJob(aj)
-	job.Canonicalize()
+	canonicalizeWarnings := job.Canonicalize()
 
 	if vErr := job.Validate(); vErr != nil {
 		if merr, ok := vErr.(*multierror.Error); ok {
@@ -112,5 +128,7 @@ func (c *ValidateCommand) validateLocal(aj *api.Job) (*api.JobValidateResponse, 
 		}
 	}
 
+	warnings := job.Warnings()
+	out.Warnings = structs.MergeMultierrorWarnings(warnings, canonicalizeWarnings)
 	return &out, nil
 }

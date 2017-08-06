@@ -65,7 +65,7 @@ all groups (and tasks) in the job.
   to examine for the constraint. This can be any of the [Nomad interpolated
   values](/docs/runtime/interpolation.html#interpreted_node_vars).
 
-- `operator` `(string: "=")` - Specifies the comparison operator.The ordering is
+- `operator` `(string: "=")` - Specifies the comparison operator. The ordering is
   compared lexically. Possible values include:
 
     ```text
@@ -133,7 +133,7 @@ constraint {
     ```hcl
     constraint {
       operator  = "distinct_property"
-      attribute = "${meta.rack"}
+      attribute = "${meta.rack}"
     }
     ```
 
@@ -204,7 +204,7 @@ constraint {
 }
 ```
 
-### Distint Property
+### Distinct Property
 
 A potential use case of the `distinct_property` constraint is to spread a
 service with `count > 1` across racks to minimize correlated failure. Nodes can

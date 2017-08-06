@@ -8,13 +8,14 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime/debug"
+	"sort"
 	"strconv"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 
 	docker "github.com/fsouza/go-dockerclient"
+	sockaddr "github.com/hashicorp/go-sockaddr"
 	"github.com/hashicorp/nomad/client/allocdir"
 	"github.com/hashicorp/nomad/client/config"
 	"github.com/hashicorp/nomad/client/driver/env"
@@ -41,8 +42,8 @@ func dockerIsRemote(t *testing.T) bool {
 
 // Ports used by tests
 var (
-	docker_reserved = 32768 + int(rand.Int31n(25000))
-	docker_dynamic  = 32768 + int(rand.Int31n(25000))
+	docker_reserved = 2000 + int(rand.Int31n(10000))
+	docker_dynamic  = 2000 + int(rand.Int31n(10000))
 )
 
 // Returns a task with a reserved and dynamic port. The ports are returned
@@ -109,30 +110,38 @@ func dockerSetupWithClient(t *testing.T, task *structs.Task, client *docker.Clie
 	driver := NewDockerDriver(tctx.DriverCtx)
 	copyImage(t, tctx.ExecCtx.TaskDir, "busybox.tar")
 
-	res, err := driver.Prestart(tctx.ExecCtx, task)
+	presp, err := driver.Prestart(tctx.ExecCtx, task)
 	if err != nil {
+		driver.Cleanup(tctx.ExecCtx, presp.CreatedResources)
 		tctx.AllocDir.Destroy()
 		t.Fatalf("error in prestart: %v", err)
 	}
+	// Update the exec ctx with the driver network env vars
+	tctx.ExecCtx.TaskEnv = tctx.EnvBuilder.SetDriverNetwork(presp.Network).Build()
 
-	handle, err := driver.Start(tctx.ExecCtx, task)
+	sresp, err := driver.Start(tctx.ExecCtx, task)
 	if err != nil {
+		driver.Cleanup(tctx.ExecCtx, presp.CreatedResources)
 		tctx.AllocDir.Destroy()
 		t.Fatalf("Failed to start driver: %s\nStack\n%s", err, debug.Stack())
 	}
 
-	if handle == nil {
+	if sresp.Handle == nil {
+		driver.Cleanup(tctx.ExecCtx, presp.CreatedResources)
 		tctx.AllocDir.Destroy()
 		t.Fatalf("handle is nil\nStack\n%s", debug.Stack())
 	}
 
+	// At runtime this is handled by TaskRunner
+	tctx.ExecCtx.TaskEnv = tctx.EnvBuilder.SetDriverNetwork(sresp.Network).Build()
+
 	cleanup := func() {
-		driver.Cleanup(tctx.ExecCtx, res)
-		handle.Kill()
+		driver.Cleanup(tctx.ExecCtx, presp.CreatedResources)
+		sresp.Handle.Kill()
 		tctx.AllocDir.Destroy()
 	}
 
-	return client, handle, cleanup
+	return client, sresp.Handle, cleanup
 }
 
 func newTestDockerClient(t *testing.T) *docker.Client {
@@ -149,6 +158,9 @@ func newTestDockerClient(t *testing.T) *docker.Client {
 
 // This test should always pass, even if docker daemon is not available
 func TestDockerDriver_Fingerprint(t *testing.T) {
+	if !tu.IsTravis() {
+		t.Parallel()
+	}
 	ctx := testDockerDriverContexts(t, &structs.Task{Name: "foo", Driver: "docker", Resources: basicResources})
 	//ctx.DriverCtx.config.Options = map[string]string{"docker.cleanup.image": "false"}
 	defer ctx.AllocDir.Destroy()
@@ -169,7 +181,47 @@ func TestDockerDriver_Fingerprint(t *testing.T) {
 	t.Logf("Found docker version %s", node.Attributes["driver.docker.version"])
 }
 
+// TestDockerDriver_Fingerprint_Bridge asserts that if Docker is running we set
+// the bridge network's IP as a node attribute. See #2785
+func TestDockerDriver_Fingerprint_Bridge(t *testing.T) {
+	if !tu.IsTravis() {
+		t.Parallel()
+	}
+	if !testutil.DockerIsConnected(t) {
+		t.Skip("requires Docker")
+	}
+
+	// This seems fragile, so we might need to reconsider this test if it
+	// proves flaky
+	expectedAddr, err := sockaddr.GetInterfaceIP("docker0")
+	if err != nil {
+		t.Fatalf("unable to get ip for docker0: %v", err)
+	}
+	if expectedAddr == "" {
+		t.Fatalf("unable to get ip for docker bridge")
+	}
+
+	conf := testConfig()
+	conf.Node = mock.Node()
+	dd := NewDockerDriver(NewDriverContext("", "", conf, conf.Node, testLogger(), nil))
+	ok, err := dd.Fingerprint(conf, conf.Node)
+	if err != nil {
+		t.Fatalf("error fingerprinting docker: %v", err)
+	}
+	if !ok {
+		t.Fatalf("expected Docker to be enabled but false was returned")
+	}
+
+	if found := conf.Node.Attributes["driver.docker.bridge_ip"]; found != expectedAddr {
+		t.Fatalf("expected bridge ip %q but found: %q", expectedAddr, found)
+	}
+	t.Logf("docker bridge ip: %q", conf.Node.Attributes["driver.docker.bridge_ip"])
+}
+
 func TestDockerDriver_StartOpen_Wait(t *testing.T) {
+	if !tu.IsTravis() {
+		t.Parallel()
+	}
 	if !testutil.DockerIsConnected(t) {
 		t.SkipNow()
 	}
@@ -201,26 +253,29 @@ func TestDockerDriver_StartOpen_Wait(t *testing.T) {
 		t.Fatalf("error in prestart: %v", err)
 	}
 
-	handle, err := d.Start(ctx.ExecCtx, task)
+	resp, err := d.Start(ctx.ExecCtx, task)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
-	if handle == nil {
+	if resp.Handle == nil {
 		t.Fatalf("missing handle")
 	}
-	defer handle.Kill()
+	defer resp.Handle.Kill()
 
 	// Attempt to open
-	handle2, err := d.Open(ctx.ExecCtx, handle.ID())
+	resp2, err := d.Open(ctx.ExecCtx, resp.Handle.ID())
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
-	if handle2 == nil {
+	if resp2 == nil {
 		t.Fatalf("missing handle")
 	}
 }
 
 func TestDockerDriver_Start_Wait(t *testing.T) {
+	if !tu.IsTravis() {
+		t.Parallel()
+	}
 	task := &structs.Task{
 		Name:   "nc-demo",
 		Driver: "docker",
@@ -260,6 +315,9 @@ func TestDockerDriver_Start_Wait(t *testing.T) {
 }
 
 func TestDockerDriver_Start_LoadImage(t *testing.T) {
+	if !tu.IsTravis() {
+		t.Parallel()
+	}
 	if !testutil.DockerIsConnected(t) {
 		t.SkipNow()
 	}
@@ -296,17 +354,14 @@ func TestDockerDriver_Start_LoadImage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error in prestart: %v", err)
 	}
-	handle, err := d.Start(ctx.ExecCtx, task)
+	resp, err := d.Start(ctx.ExecCtx, task)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
-	if handle == nil {
-		t.Fatalf("missing handle")
-	}
-	defer handle.Kill()
+	defer resp.Handle.Kill()
 
 	select {
-	case res := <-handle.WaitCh():
+	case res := <-resp.Handle.WaitCh():
 		if !res.Successful() {
 			t.Fatalf("err: %v", res)
 		}
@@ -329,6 +384,9 @@ func TestDockerDriver_Start_LoadImage(t *testing.T) {
 }
 
 func TestDockerDriver_Start_BadPull_Recoverable(t *testing.T) {
+	if !tu.IsTravis() {
+		t.Parallel()
+	}
 	if !testutil.DockerIsConnected(t) {
 		t.SkipNow()
 	}
@@ -370,6 +428,9 @@ func TestDockerDriver_Start_BadPull_Recoverable(t *testing.T) {
 }
 
 func TestDockerDriver_Start_Wait_AllocDir(t *testing.T) {
+	if !tu.IsTravis() {
+		t.Parallel()
+	}
 	// This test requires that the alloc dir be mounted into docker as a volume.
 	// Because this cannot happen when docker is run remotely, e.g. when running
 	// docker in a VM, we skip this when we detect Docker is being run remotely.
@@ -412,17 +473,14 @@ func TestDockerDriver_Start_Wait_AllocDir(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error in prestart: %v", err)
 	}
-	handle, err := d.Start(ctx.ExecCtx, task)
+	resp, err := d.Start(ctx.ExecCtx, task)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
-	if handle == nil {
-		t.Fatalf("missing handle")
-	}
-	defer handle.Kill()
+	defer resp.Handle.Kill()
 
 	select {
-	case res := <-handle.WaitCh():
+	case res := <-resp.Handle.WaitCh():
 		if !res.Successful() {
 			t.Fatalf("err: %v", res)
 		}
@@ -443,6 +501,9 @@ func TestDockerDriver_Start_Wait_AllocDir(t *testing.T) {
 }
 
 func TestDockerDriver_Start_Kill_Wait(t *testing.T) {
+	if !tu.IsTravis() {
+		t.Parallel()
+	}
 	task := &structs.Task{
 		Name:   "nc-demo",
 		Driver: "docker",
@@ -481,6 +542,9 @@ func TestDockerDriver_Start_Kill_Wait(t *testing.T) {
 }
 
 func TestDockerDriver_StartN(t *testing.T) {
+	if !tu.IsTravis() {
+		t.Parallel()
+	}
 	if !testutil.DockerIsConnected(t) {
 		t.SkipNow()
 	}
@@ -506,10 +570,12 @@ func TestDockerDriver_StartN(t *testing.T) {
 		if err != nil {
 			t.Fatalf("error in prestart #%d: %v", idx+1, err)
 		}
-		handles[idx], err = d.Start(ctx.ExecCtx, task)
+		resp, err := d.Start(ctx.ExecCtx, task)
 		if err != nil {
 			t.Errorf("Failed starting task #%d: %s", idx+1, err)
+			continue
 		}
+		handles[idx] = resp.Handle
 	}
 
 	t.Log("All tasks are started. Terminating...")
@@ -530,6 +596,9 @@ func TestDockerDriver_StartN(t *testing.T) {
 }
 
 func TestDockerDriver_StartNVersions(t *testing.T) {
+	if !tu.IsTravis() {
+		t.Parallel()
+	}
 	if !testutil.DockerIsConnected(t) {
 		t.SkipNow()
 	}
@@ -566,10 +635,12 @@ func TestDockerDriver_StartNVersions(t *testing.T) {
 		if err != nil {
 			t.Fatalf("error in prestart #%d: %v", idx+1, err)
 		}
-		handles[idx], err = d.Start(ctx.ExecCtx, task)
+		resp, err := d.Start(ctx.ExecCtx, task)
 		if err != nil {
 			t.Errorf("Failed starting task #%d: %s", idx+1, err)
+			continue
 		}
+		handles[idx] = resp.Handle
 	}
 
 	t.Log("All tasks are started. Terminating...")
@@ -605,6 +676,9 @@ func waitForExist(t *testing.T, client *docker.Client, handle *DockerHandle) {
 }
 
 func TestDockerDriver_NetworkMode_Host(t *testing.T) {
+	if !tu.IsTravis() {
+		t.Parallel()
+	}
 	expected := "host"
 
 	task := &structs.Task{
@@ -644,6 +718,9 @@ func TestDockerDriver_NetworkMode_Host(t *testing.T) {
 }
 
 func TestDockerDriver_NetworkAliases_Bridge(t *testing.T) {
+	if !tu.IsTravis() {
+		t.Parallel()
+	}
 	// Because go-dockerclient doesn't provide api for query network aliases, just check that
 	// a container can be created with a 'network_aliases' property
 
@@ -690,6 +767,9 @@ func TestDockerDriver_NetworkAliases_Bridge(t *testing.T) {
 }
 
 func TestDockerDriver_Labels(t *testing.T) {
+	if !tu.IsTravis() {
+		t.Parallel()
+	}
 	task, _, _ := dockerTask()
 	task.Config["labels"] = []map[string]string{
 		map[string]string{
@@ -718,6 +798,9 @@ func TestDockerDriver_Labels(t *testing.T) {
 }
 
 func TestDockerDriver_ForcePull_IsInvalidConfig(t *testing.T) {
+	if !tu.IsTravis() {
+		t.Parallel()
+	}
 	task, _, _ := dockerTask()
 	task.Config["force_pull"] = "nothing"
 
@@ -732,6 +815,9 @@ func TestDockerDriver_ForcePull_IsInvalidConfig(t *testing.T) {
 }
 
 func TestDockerDriver_ForcePull(t *testing.T) {
+	if !tu.IsTravis() {
+		t.Parallel()
+	}
 	task, _, _ := dockerTask()
 	task.Config["force_pull"] = "true"
 
@@ -746,7 +832,32 @@ func TestDockerDriver_ForcePull(t *testing.T) {
 	}
 }
 
+func TestDockerDriver_SecurityOpt(t *testing.T) {
+	if !tu.IsTravis() {
+		t.Parallel()
+	}
+	task, _, _ := dockerTask()
+	task.Config["security_opt"] = []string{"seccomp=unconfined"}
+
+	client, handle, cleanup := dockerSetup(t, task)
+	defer cleanup()
+
+	waitForExist(t, client, handle.(*DockerHandle))
+
+	container, err := client.InspectContainer(handle.(*DockerHandle).ContainerID())
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+
+	if !reflect.DeepEqual(task.Config["security_opt"], container.HostConfig.SecurityOpt) {
+		t.Errorf("Security Opts don't match.\nExpected:\n%s\nGot:\n%s\n", task.Config["security_opt"], container.HostConfig.SecurityOpt)
+	}
+}
+
 func TestDockerDriver_DNS(t *testing.T) {
+	if !tu.IsTravis() {
+		t.Parallel()
+	}
 	task, _, _ := dockerTask()
 	task.Config["dns_servers"] = []string{"8.8.8.8", "8.8.4.4"}
 	task.Config["dns_search_domains"] = []string{"example.com", "example.org", "example.net"}
@@ -770,7 +881,32 @@ func TestDockerDriver_DNS(t *testing.T) {
 	}
 }
 
+func TestDockerDriver_MACAddress(t *testing.T) {
+	if !tu.IsTravis() {
+		t.Parallel()
+	}
+	task, _, _ := dockerTask()
+	task.Config["mac_address"] = "00:16:3e:00:00:00"
+
+	client, handle, cleanup := dockerSetup(t, task)
+	defer cleanup()
+
+	waitForExist(t, client, handle.(*DockerHandle))
+
+	container, err := client.InspectContainer(handle.(*DockerHandle).ContainerID())
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+
+	if container.NetworkSettings.MacAddress != task.Config["mac_address"] {
+		t.Errorf("expected mac_address=%q but found %q", task.Config["mac_address"], container.NetworkSettings.MacAddress)
+	}
+}
+
 func TestDockerWorkDir(t *testing.T) {
+	if !tu.IsTravis() {
+		t.Parallel()
+	}
 	task, _, _ := dockerTask()
 	task.Config["work_dir"] = "/some/path"
 
@@ -797,6 +933,9 @@ func inSlice(needle string, haystack []string) bool {
 }
 
 func TestDockerDriver_PortsNoMap(t *testing.T) {
+	if !tu.IsTravis() {
+		t.Parallel()
+	}
 	task, res, dyn := dockerTask()
 
 	client, handle, cleanup := dockerSetup(t, task)
@@ -847,6 +986,9 @@ func TestDockerDriver_PortsNoMap(t *testing.T) {
 }
 
 func TestDockerDriver_PortsMapping(t *testing.T) {
+	if !tu.IsTravis() {
+		t.Parallel()
+	}
 	task, res, dyn := dockerTask()
 	task.Config["port_map"] = []map[string]string{
 		map[string]string{
@@ -890,20 +1032,24 @@ func TestDockerDriver_PortsMapping(t *testing.T) {
 	}
 
 	expectedEnvironment := map[string]string{
-		"NOMAD_ADDR_main":      "127.0.0.1:8080",
-		"NOMAD_ADDR_REDIS":     "127.0.0.1:6379",
-		"NOMAD_HOST_PORT_main": strconv.Itoa(docker_reserved),
+		"NOMAD_PORT_main":      "8080",
+		"NOMAD_PORT_REDIS":     "6379",
+		"NOMAD_HOST_PORT_main": strconv.Itoa(res),
 	}
 
+	sort.Strings(container.Config.Env)
 	for key, val := range expectedEnvironment {
 		search := fmt.Sprintf("%s=%s", key, val)
 		if !inSlice(search, container.Config.Env) {
-			t.Errorf("Expected to find %s in container environment: %+v", search, container.Config.Env)
+			t.Errorf("Expected to find %s in container environment:\n%s\n\n", search, strings.Join(container.Config.Env, "\n"))
 		}
 	}
 }
 
 func TestDockerDriver_User(t *testing.T) {
+	if !tu.IsTravis() {
+		t.Parallel()
+	}
 	task := &structs.Task{
 		Name:   "redis-demo",
 		User:   "alice",
@@ -941,9 +1087,9 @@ func TestDockerDriver_User(t *testing.T) {
 
 	// It should fail because the user "alice" does not exist on the given
 	// image.
-	handle, err := driver.Start(ctx.ExecCtx, task)
+	resp, err := driver.Start(ctx.ExecCtx, task)
 	if err == nil {
-		handle.Kill()
+		resp.Handle.Kill()
 		t.Fatalf("Should've failed")
 	}
 
@@ -953,6 +1099,9 @@ func TestDockerDriver_User(t *testing.T) {
 }
 
 func TestDockerDriver_CleanupContainer(t *testing.T) {
+	if !tu.IsTravis() {
+		t.Parallel()
+	}
 	task := &structs.Task{
 		Name:   "redis-demo",
 		Driver: "docker",
@@ -1001,6 +1150,9 @@ func TestDockerDriver_CleanupContainer(t *testing.T) {
 }
 
 func TestDockerDriver_Stats(t *testing.T) {
+	if !tu.IsTravis() {
+		t.Parallel()
+	}
 	task := &structs.Task{
 		Name:   "sleep",
 		Driver: "docker",
@@ -1048,95 +1200,6 @@ func TestDockerDriver_Stats(t *testing.T) {
 	}
 }
 
-func TestDockerDriver_Signal(t *testing.T) {
-	if !testutil.DockerIsConnected(t) {
-		t.SkipNow()
-	}
-
-	task := &structs.Task{
-		Name:   "redis-demo",
-		Driver: "docker",
-		Config: map[string]interface{}{
-			"image":   "busybox",
-			"load":    "busybox.tar",
-			"command": "/bin/sh",
-			"args":    []string{"local/test.sh"},
-		},
-		Resources: &structs.Resources{
-			MemoryMB: 256,
-			CPU:      512,
-		},
-		LogConfig: &structs.LogConfig{
-			MaxFiles:      10,
-			MaxFileSizeMB: 10,
-		},
-	}
-
-	ctx := testDockerDriverContexts(t, task)
-	//ctx.DriverCtx.config.Options = map[string]string{"docker.cleanup.image": "false"}
-	defer ctx.AllocDir.Destroy()
-	d := NewDockerDriver(ctx.DriverCtx)
-
-	// Copy the image into the task's directory
-	copyImage(t, ctx.ExecCtx.TaskDir, "busybox.tar")
-
-	testFile := filepath.Join(ctx.ExecCtx.TaskDir.LocalDir, "test.sh")
-	testData := []byte(`
-at_term() {
-    echo 'Terminated.'
-    exit 3
-}
-trap at_term USR1
-while true; do
-    sleep 1
-done
-	`)
-	if err := ioutil.WriteFile(testFile, testData, 0777); err != nil {
-		t.Fatalf("Failed to write data: %v", err)
-	}
-
-	_, err := d.Prestart(ctx.ExecCtx, task)
-	if err != nil {
-		t.Fatalf("error in prestart: %v", err)
-	}
-	handle, err := d.Start(ctx.ExecCtx, task)
-	if err != nil {
-		t.Fatalf("err: %v", err)
-	}
-	if handle == nil {
-		t.Fatalf("missing handle")
-	}
-	defer handle.Kill()
-
-	waitForExist(t, handle.(*DockerHandle).client, handle.(*DockerHandle))
-
-	time.Sleep(1 * time.Second)
-	if err := handle.Signal(syscall.SIGUSR1); err != nil {
-		t.Fatalf("Signal returned an error: %v", err)
-	}
-
-	select {
-	case res := <-handle.WaitCh():
-		if res.Successful() {
-			t.Fatalf("should err: %v", res)
-		}
-	case <-time.After(time.Duration(tu.TestMultiplier()*5) * time.Second):
-		t.Fatalf("timeout")
-	}
-
-	// Check the log file to see it exited because of the signal
-	outputFile := filepath.Join(ctx.ExecCtx.TaskDir.LogDir, "redis-demo.stdout.0")
-	act, err := ioutil.ReadFile(outputFile)
-	if err != nil {
-		t.Fatalf("Couldn't read expected output: %v", err)
-	}
-
-	exp := "Terminated."
-	if strings.TrimSpace(string(act)) != exp {
-		t.Fatalf("Command outputted %v; want %v", act, exp)
-	}
-}
-
 func setupDockerVolumes(t *testing.T, cfg *config.Config, hostpath string) (*structs.Task, Driver, *ExecContext, string, func()) {
 	if !testutil.DockerIsConnected(t) {
 		t.SkipNow()
@@ -1177,7 +1240,8 @@ func setupDockerVolumes(t *testing.T, cfg *config.Config, hostpath string) (*str
 	}
 
 	alloc := mock.Alloc()
-	execCtx := NewExecContext(taskDir)
+	envBuilder := env.NewBuilder(cfg.Node, alloc, task, cfg.Region)
+	execCtx := NewExecContext(taskDir, envBuilder.Build())
 	cleanup := func() {
 		allocDir.Destroy()
 		if filepath.IsAbs(hostpath) {
@@ -1185,17 +1249,11 @@ func setupDockerVolumes(t *testing.T, cfg *config.Config, hostpath string) (*str
 		}
 	}
 
-	taskEnv, err := GetTaskEnv(taskDir, cfg.Node, task, alloc, cfg, "")
-	if err != nil {
-		cleanup()
-		t.Fatalf("Failed to get task env: %v", err)
-	}
-
 	logger := testLogger()
 	emitter := func(m string, args ...interface{}) {
 		logger.Printf("[EVENT] "+m, args...)
 	}
-	driverCtx := NewDriverContext(task.Name, alloc.ID, cfg, cfg.Node, testLogger(), taskEnv, emitter)
+	driverCtx := NewDriverContext(task.Name, alloc.ID, cfg, cfg.Node, testLogger(), emitter)
 	driver := NewDockerDriver(driverCtx)
 	copyImage(t, taskDir, "busybox.tar")
 
@@ -1203,6 +1261,9 @@ func setupDockerVolumes(t *testing.T, cfg *config.Config, hostpath string) (*str
 }
 
 func TestDockerDriver_VolumesDisabled(t *testing.T) {
+	if !tu.IsTravis() {
+		t.Parallel()
+	}
 	cfg := testConfig()
 	cfg.Options = map[string]string{
 		dockerVolumesConfigOption: "false",
@@ -1236,14 +1297,14 @@ func TestDockerDriver_VolumesDisabled(t *testing.T) {
 		if err != nil {
 			t.Fatalf("error in prestart: %v", err)
 		}
-		handle, err := driver.Start(execCtx, task)
+		resp, err := driver.Start(execCtx, task)
 		if err != nil {
 			t.Fatalf("err: %v", err)
 		}
-		defer handle.Kill()
+		defer resp.Handle.Kill()
 
 		select {
-		case res := <-handle.WaitCh():
+		case res := <-resp.Handle.WaitCh():
 			if !res.Successful() {
 				t.Fatalf("unexpected err: %v", res)
 			}
@@ -1273,6 +1334,9 @@ func TestDockerDriver_VolumesDisabled(t *testing.T) {
 }
 
 func TestDockerDriver_VolumesEnabled(t *testing.T) {
+	if !tu.IsTravis() {
+		t.Parallel()
+	}
 	cfg := testConfig()
 
 	tmpvol, err := ioutil.TempDir("", "nomadtest_docker_volumesenabled")
@@ -1287,14 +1351,14 @@ func TestDockerDriver_VolumesEnabled(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error in prestart: %v", err)
 	}
-	handle, err := driver.Start(execCtx, task)
+	resp, err := driver.Start(execCtx, task)
 	if err != nil {
 		t.Fatalf("Failed to start docker driver: %v", err)
 	}
-	defer handle.Kill()
+	defer resp.Handle.Kill()
 
 	select {
-	case res := <-handle.WaitCh():
+	case res := <-resp.Handle.WaitCh():
 		if !res.Successful() {
 			t.Fatalf("unexpected err: %v", res)
 		}
@@ -1309,6 +1373,9 @@ func TestDockerDriver_VolumesEnabled(t *testing.T) {
 
 // TestDockerDriver_Cleanup ensures Cleanup removes only downloaded images.
 func TestDockerDriver_Cleanup(t *testing.T) {
+	if !tu.IsTravis() {
+		t.Parallel()
+	}
 	if !testutil.DockerIsConnected(t) {
 		t.SkipNow()
 	}
@@ -1326,10 +1393,11 @@ func TestDockerDriver_Cleanup(t *testing.T) {
 
 	// Run Prestart
 	driver := NewDockerDriver(tctx.DriverCtx).(*DockerDriver)
-	res, err := driver.Prestart(tctx.ExecCtx, task)
+	resp, err := driver.Prestart(tctx.ExecCtx, task)
 	if err != nil {
 		t.Fatalf("error in prestart: %v", err)
 	}
+	res := resp.CreatedResources
 	if len(res.Resources) == 0 || len(res.Resources[dockerImageResKey]) == 0 {
 		t.Fatalf("no created resources: %#v", res)
 	}
@@ -1369,6 +1437,9 @@ func copyImage(t *testing.T, taskDir *allocdir.TaskDir, image string) {
 }
 
 func TestDockerDriver_AuthConfiguration(t *testing.T) {
+	if !tu.IsTravis() {
+		t.Parallel()
+	}
 	path := "./test-resources/docker/auth.json"
 	cases := []struct {
 		Repo       string
@@ -1376,7 +1447,7 @@ func TestDockerDriver_AuthConfiguration(t *testing.T) {
 	}{
 		{
 			Repo:       "lolwhat.com/what:1337",
-			AuthConfig: &docker.AuthConfiguration{},
+			AuthConfig: nil,
 		},
 		{
 			Repo: "redis:3.2",
@@ -1408,7 +1479,7 @@ func TestDockerDriver_AuthConfiguration(t *testing.T) {
 	}
 
 	for i, c := range cases {
-		act, err := authOptionFrom(path, c.Repo)
+		act, err := authFromDockerConfig(path)(c.Repo)
 		if err != nil {
 			t.Fatalf("Test %d failed: %v", i+1, err)
 		}

@@ -19,12 +19,14 @@ import (
 	"time"
 
 	"github.com/hashicorp/nomad/client/allocdir"
+	"github.com/hashicorp/nomad/nomad/structs"
 	"github.com/hashicorp/nomad/testutil"
 	"github.com/ugorji/go/codec"
 )
 
 func TestAllocDirFS_List_MissingParams(t *testing.T) {
-	httpTest(t, nil, func(s *TestServer) {
+	t.Parallel()
+	httpTest(t, nil, func(s *TestAgent) {
 		req, err := http.NewRequest("GET", "/v1/client/fs/ls/", nil)
 		if err != nil {
 			t.Fatalf("err: %v", err)
@@ -39,7 +41,8 @@ func TestAllocDirFS_List_MissingParams(t *testing.T) {
 }
 
 func TestAllocDirFS_Stat_MissingParams(t *testing.T) {
-	httpTest(t, nil, func(s *TestServer) {
+	t.Parallel()
+	httpTest(t, nil, func(s *TestAgent) {
 		req, err := http.NewRequest("GET", "/v1/client/fs/stat/", nil)
 		if err != nil {
 			t.Fatalf("err: %v", err)
@@ -66,7 +69,8 @@ func TestAllocDirFS_Stat_MissingParams(t *testing.T) {
 }
 
 func TestAllocDirFS_ReadAt_MissingParams(t *testing.T) {
-	httpTest(t, nil, func(s *TestServer) {
+	t.Parallel()
+	httpTest(t, nil, func(s *TestAgent) {
 		req, err := http.NewRequest("GET", "/v1/client/fs/readat/", nil)
 		if err != nil {
 			t.Fatalf("err: %v", err)
@@ -123,7 +127,7 @@ func TestStreamFramer_Flush(t *testing.T) {
 	sf.Run()
 
 	// Create a decoder
-	dec := codec.NewDecoder(r, jsonHandle)
+	dec := codec.NewDecoder(r, structs.JsonHandle)
 
 	f := "foo"
 	fe := "bar"
@@ -191,7 +195,7 @@ func TestStreamFramer_Batch(t *testing.T) {
 	sf.Run()
 
 	// Create a decoder
-	dec := codec.NewDecoder(r, jsonHandle)
+	dec := codec.NewDecoder(r, structs.JsonHandle)
 
 	f := "foo"
 	fe := "bar"
@@ -268,7 +272,7 @@ func TestStreamFramer_Heartbeat(t *testing.T) {
 	sf.Run()
 
 	// Create a decoder
-	dec := codec.NewDecoder(r, jsonHandle)
+	dec := codec.NewDecoder(r, structs.JsonHandle)
 
 	// Start the reader
 	resultCh := make(chan struct{})
@@ -320,7 +324,7 @@ func TestStreamFramer_Order(t *testing.T) {
 	sf.Run()
 
 	// Create a decoder
-	dec := codec.NewDecoder(r, jsonHandle)
+	dec := codec.NewDecoder(r, structs.JsonHandle)
 
 	files := []string{"1", "2", "3", "4", "5"}
 	input := bytes.NewBuffer(make([]byte, 0, 100000))
@@ -499,7 +503,8 @@ func TestStreamFramer_Order_PlainText(t *testing.T) {
 }
 
 func TestHTTP_Stream_MissingParams(t *testing.T) {
-	httpTest(t, nil, func(s *TestServer) {
+	t.Parallel()
+	httpTest(t, nil, func(s *TestAgent) {
 		req, err := http.NewRequest("GET", "/v1/client/fs/stream/", nil)
 		if err != nil {
 			t.Fatalf("err: %v", err)
@@ -559,7 +564,8 @@ func (n nopWriteCloser) Close() error {
 }
 
 func TestHTTP_Stream_NoFile(t *testing.T) {
-	httpTest(t, nil, func(s *TestServer) {
+	t.Parallel()
+	httpTest(t, nil, func(s *TestAgent) {
 		// Get a temp alloc dir
 		ad := tempAllocDir(t)
 		defer os.RemoveAll(ad.AllocDir)
@@ -575,7 +581,8 @@ func TestHTTP_Stream_NoFile(t *testing.T) {
 }
 
 func TestHTTP_Stream_Modify(t *testing.T) {
-	httpTest(t, nil, func(s *TestServer) {
+	t.Parallel()
+	httpTest(t, nil, func(s *TestAgent) {
 		// Get a temp alloc dir
 		ad := tempAllocDir(t)
 		defer os.RemoveAll(ad.AllocDir)
@@ -592,7 +599,7 @@ func TestHTTP_Stream_Modify(t *testing.T) {
 		r, w := io.Pipe()
 		defer r.Close()
 		defer w.Close()
-		dec := codec.NewDecoder(r, jsonHandle)
+		dec := codec.NewDecoder(r, structs.JsonHandle)
 
 		data := []byte("helloworld")
 
@@ -650,7 +657,8 @@ func TestHTTP_Stream_Modify(t *testing.T) {
 }
 
 func TestHTTP_Stream_Truncate(t *testing.T) {
-	httpTest(t, nil, func(s *TestServer) {
+	t.Parallel()
+	httpTest(t, nil, func(s *TestAgent) {
 		// Get a temp alloc dir
 		ad := tempAllocDir(t)
 		defer os.RemoveAll(ad.AllocDir)
@@ -668,7 +676,7 @@ func TestHTTP_Stream_Truncate(t *testing.T) {
 		r, w := io.Pipe()
 		defer r.Close()
 		defer w.Close()
-		dec := codec.NewDecoder(r, jsonHandle)
+		dec := codec.NewDecoder(r, structs.JsonHandle)
 
 		data := []byte("helloworld")
 
@@ -759,7 +767,8 @@ func TestHTTP_Stream_Truncate(t *testing.T) {
 }
 
 func TestHTTP_Stream_Delete(t *testing.T) {
-	httpTest(t, nil, func(s *TestServer) {
+	t.Parallel()
+	httpTest(t, nil, func(s *TestAgent) {
 		// Get a temp alloc dir
 		ad := tempAllocDir(t)
 		defer os.RemoveAll(ad.AllocDir)
@@ -778,7 +787,7 @@ func TestHTTP_Stream_Delete(t *testing.T) {
 		wrappedW := &WriteCloseChecker{WriteCloser: w}
 		defer r.Close()
 		defer w.Close()
-		dec := codec.NewDecoder(r, jsonHandle)
+		dec := codec.NewDecoder(r, structs.JsonHandle)
 
 		data := []byte("helloworld")
 
@@ -841,7 +850,8 @@ func TestHTTP_Stream_Delete(t *testing.T) {
 }
 
 func TestHTTP_Logs_NoFollow(t *testing.T) {
-	httpTest(t, nil, func(s *TestServer) {
+	t.Parallel()
+	httpTest(t, nil, func(s *TestAgent) {
 		// Get a temp alloc dir and create the log dir
 		ad := tempAllocDir(t)
 		defer os.RemoveAll(ad.AllocDir)
@@ -869,7 +879,7 @@ func TestHTTP_Logs_NoFollow(t *testing.T) {
 		wrappedW := &WriteCloseChecker{WriteCloser: w}
 		defer r.Close()
 		defer w.Close()
-		dec := codec.NewDecoder(r, jsonHandle)
+		dec := codec.NewDecoder(r, structs.JsonHandle)
 
 		var received []byte
 
@@ -922,7 +932,8 @@ func TestHTTP_Logs_NoFollow(t *testing.T) {
 }
 
 func TestHTTP_Logs_Follow(t *testing.T) {
-	httpTest(t, nil, func(s *TestServer) {
+	t.Parallel()
+	httpTest(t, nil, func(s *TestAgent) {
 		// Get a temp alloc dir and create the log dir
 		ad := tempAllocDir(t)
 		defer os.RemoveAll(ad.AllocDir)
@@ -955,7 +966,7 @@ func TestHTTP_Logs_Follow(t *testing.T) {
 		wrappedW := &WriteCloseChecker{WriteCloser: w}
 		defer r.Close()
 		defer w.Close()
-		dec := codec.NewDecoder(r, jsonHandle)
+		dec := codec.NewDecoder(r, structs.JsonHandle)
 
 		var received []byte
 
@@ -1028,7 +1039,7 @@ func BenchmarkHTTP_Logs_Follow(t *testing.B) {
 	runtime.MemProfileRate = 1
 
 	s := makeHTTPServer(t, nil)
-	defer s.Cleanup()
+	defer s.Shutdown()
 	testutil.WaitForLeader(t, s.Agent.RPC)
 
 	// Get a temp alloc dir and create the log dir
@@ -1071,7 +1082,7 @@ func BenchmarkHTTP_Logs_Follow(t *testing.B) {
 		wrappedW := &WriteCloseChecker{WriteCloser: w}
 		defer r.Close()
 		defer w.Close()
-		dec := codec.NewDecoder(r, jsonHandle)
+		dec := codec.NewDecoder(r, structs.JsonHandle)
 
 		var received []byte
 

@@ -16,6 +16,7 @@ import (
 	cstructs "github.com/hashicorp/nomad/client/structs"
 	"github.com/hashicorp/nomad/client/testutil"
 	"github.com/hashicorp/nomad/nomad/structs"
+	"github.com/kr/pretty"
 )
 
 var (
@@ -50,7 +51,10 @@ var (
 )
 
 func testLogger() *log.Logger {
-	return log.New(os.Stderr, "", log.LstdFlags)
+	if testing.Verbose() {
+		return log.New(os.Stderr, "", log.LstdFlags)
+	}
+	return log.New(ioutil.Discard, "", log.LstdFlags)
 }
 
 // Test that AllocDir.Build builds just the alloc directory.
@@ -166,11 +170,23 @@ func TestAllocDir_Snapshot(t *testing.T) {
 		t.Fatalf("Couldn't write file to shared directory: %v", err)
 	}
 
+	// Write a symlink to the shared dir
+	link := "qux"
+	if err := os.Symlink("foo", filepath.Join(d.SharedDir, "data", link)); err != nil {
+		t.Fatalf("Couldn't write symlink to shared directory: %v", err)
+	}
+
 	// Write a file to the task local
 	exp = []byte{'b', 'a', 'r'}
 	file1 := "lol"
 	if err := ioutil.WriteFile(filepath.Join(td1.LocalDir, file1), exp, 0666); err != nil {
-		t.Fatalf("couldn't write to task local directory: %v", err)
+		t.Fatalf("couldn't write file to task local directory: %v", err)
+	}
+
+	// Write a symlink to the task local
+	link1 := "baz"
+	if err := os.Symlink("bar", filepath.Join(td1.LocalDir, link1)); err != nil {
+		t.Fatalf("couldn't write symlink to task local dirctory :%v", err)
 	}
 
 	var b bytes.Buffer
@@ -180,6 +196,7 @@ func TestAllocDir_Snapshot(t *testing.T) {
 
 	tr := tar.NewReader(&b)
 	var files []string
+	var links []string
 	for {
 		hdr, err := tr.Next()
 		if err != nil && err != io.EOF {
@@ -190,11 +207,16 @@ func TestAllocDir_Snapshot(t *testing.T) {
 		}
 		if hdr.Typeflag == tar.TypeReg {
 			files = append(files, hdr.FileInfo().Name())
+		} else if hdr.Typeflag == tar.TypeSymlink {
+			links = append(links, hdr.FileInfo().Name())
 		}
 	}
 
 	if len(files) != 2 {
 		t.Fatalf("bad files: %#v", files)
+	}
+	if len(links) != 2 {
+		t.Fatalf("bad links: %#v", links)
 	}
 }
 
@@ -349,8 +371,10 @@ func TestAllocDir_SplitPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
-	if len(info) != 6 {
-		t.Fatalf("expected: %v, actual: %v", 6, len(info))
+	// Testing that is 6 or more rather than 6 because on osx, the temp dir is
+	// randomized.
+	if len(info) < 6 {
+		t.Fatalf("expected more than: %v, actual: %v", 6, len(info))
 	}
 }
 
@@ -388,6 +412,25 @@ func TestAllocDir_CreateDir(t *testing.T) {
 	}
 	if fi.Mode() != subdirMode.Mode() {
 		t.Fatalf("wrong file mode: %v, expected: %v", fi.Mode(), subdirMode.Mode())
+	}
+}
+
+// TestAllocDir_Copy asserts that AllocDir.Copy does a deep copy of itself and
+// all TaskDirs.
+func TestAllocDir_Copy(t *testing.T) {
+	a := NewAllocDir(testLogger(), "foo")
+	a.NewTaskDir("bar")
+	a.NewTaskDir("baz")
+
+	b := a.Copy()
+	if diff := pretty.Diff(a, b); len(diff) > 0 {
+		t.Errorf("differences between copies: %# v", pretty.Formatter(diff))
+	}
+
+	// Make sure TaskDirs map is copied
+	a.NewTaskDir("new")
+	if b.TaskDirs["new"] != nil {
+		t.Errorf("TaskDirs map shared between copied")
 	}
 }
 

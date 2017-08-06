@@ -19,7 +19,7 @@ starting the Nomad server. The key can be set via the
 [`encrypt`](/docs/agent/configuration/server.html#encrypt) parameter: the value
 of this setting is a server configuration file containing the encryption key.
 
-The key must be 16-bytes, base64 encoded. As a convenience, Nomad provides the
+The key must be 16 bytes, base64 encoded. As a convenience, Nomad provides the
 [`nomad keygen`](/docs/commands/keygen.html) command to generate a cryptographically suitable key:
 
 ```sh
@@ -50,6 +50,37 @@ reject the handshake. It is also recommended for the certificate to sign
 TLS is used to secure the RPC calls between agents, but gossip between nodes is
 done over UDP and is secured using a symmetric key. See above for enabling
 gossip encryption.
+
+### Configuring the command line tool
+
+If you have HTTPS enabled for your Nomad agent, you must export environment
+variables for the command line tool to also use HTTPS:
+
+```sh
+# NOMAD_ADDR defaults to http://, so set it to https
+# Alternatively you can use the -address flag
+export NOMAD_ADDR=https://127.0.0.1:4646
+
+# Set the location of your CA certificate
+# Alternatively you can use the -ca-cert flag
+export NOMAD_CACERT=/path/to/ca.pem
+```
+
+Run any command except `agent` with `-h` to see all environment variables and
+flags. For example: `nomad status -h`
+
+By default HTTPS does not validate client certificates, so you do not need to
+give the command line tool access to any private keys.
+
+### Network Isolation with TLS
+
+If you want to isolate Nomad agents on a network with TLS you need to enable
+both [`verify_https_client`][tls] and [`verify_server_hostname`][tls]. This
+will cause agents to require client certificates for all incoming HTTPS
+connections as well as verify proper names on all other certificates.
+
+Consul will not attempt to health check agents with `verify_https_client` set
+as it is unable to use client certificates.
 
 ## Encryption Examples
 

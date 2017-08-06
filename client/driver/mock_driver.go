@@ -1,8 +1,9 @@
-// +build nomad_test
+//+build nomad_test
 
 package driver
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -34,6 +35,9 @@ type MockDriverConfig struct {
 
 	// StartErrRecoverable marks the error returned is recoverable
 	StartErrRecoverable bool `mapstructure:"start_error_recoverable"`
+
+	// StartBlockFor specifies a duration in which to block before returning
+	StartBlockFor time.Duration `mapstructure:"start_block_for"`
 
 	// KillAfter is the duration after which the mock driver indicates the task
 	// has exited after getting the initial SIGINT signal
@@ -75,6 +79,7 @@ func NewMockDriver(ctx *DriverContext) Driver {
 func (d *MockDriver) Abilities() DriverAbilities {
 	return DriverAbilities{
 		SendSignals: false,
+		Exec:        true,
 	}
 }
 
@@ -82,12 +87,12 @@ func (d *MockDriver) FSIsolation() cstructs.FSIsolation {
 	return cstructs.FSIsolationNone
 }
 
-func (d *MockDriver) Prestart(*ExecContext, *structs.Task) (*CreatedResources, error) {
+func (d *MockDriver) Prestart(*ExecContext, *structs.Task) (*PrestartResponse, error) {
 	return nil, nil
 }
 
 // Start starts the mock driver
-func (m *MockDriver) Start(ctx *ExecContext, task *structs.Task) (DriverHandle, error) {
+func (m *MockDriver) Start(ctx *ExecContext, task *structs.Task) (*StartResponse, error) {
 	var driverConfig MockDriverConfig
 	dec, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
 		DecodeHook:       mapstructure.StringToTimeDurationHookFunc(),
@@ -99,6 +104,10 @@ func (m *MockDriver) Start(ctx *ExecContext, task *structs.Task) (DriverHandle, 
 	}
 	if err := dec.Decode(task.Config); err != nil {
 		return nil, err
+	}
+
+	if driverConfig.StartBlockFor != 0 {
+		time.Sleep(driverConfig.StartBlockFor)
 	}
 
 	if driverConfig.StartErr != "" {
@@ -124,7 +133,7 @@ func (m *MockDriver) Start(ctx *ExecContext, task *structs.Task) (DriverHandle, 
 	}
 	m.logger.Printf("[DEBUG] driver.mock: starting task %q", task.Name)
 	go h.run()
-	return &h, nil
+	return &StartResponse{Handle: &h}, nil
 }
 
 // Cleanup deletes all keys except for Config.Options["cleanup_fail_on"] for
@@ -191,7 +200,7 @@ func (h *mockDriverHandle) ID() string {
 		TaskName:    h.taskName,
 		RunFor:      h.runFor,
 		KillAfter:   h.killAfter,
-		KillTimeout: h.killAfter,
+		KillTimeout: h.killTimeout,
 		ExitCode:    h.exitCode,
 		ExitSignal:  h.exitSignal,
 		ExitErr:     h.exitErr,
@@ -234,8 +243,14 @@ func (h *mockDriverHandle) WaitCh() chan *dstructs.WaitResult {
 	return h.waitCh
 }
 
+func (h *mockDriverHandle) Exec(ctx context.Context, cmd string, args []string) ([]byte, int, error) {
+	h.logger.Printf("[DEBUG] driver.mock: Exec(%q, %q)", cmd, args)
+	return []byte(fmt.Sprintf("Exec(%q, %q)", cmd, args)), 0, nil
+}
+
 // TODO Implement when we need it.
 func (h *mockDriverHandle) Update(task *structs.Task) error {
+	h.killTimeout = task.KillTimeout
 	return nil
 }
 

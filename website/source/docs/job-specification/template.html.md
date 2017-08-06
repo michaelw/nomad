@@ -44,12 +44,14 @@ Nomad utilizes a tool called [Consul Template][ct]. Since Nomad v0.5.3, the
 template can reference [Nomad's runtime environment variables][env]. Since Nomad
 v0.5.6, the template can reference [Node attributes and metadata][nodevars]. For
 a full list of the API template functions, please refer to the [Consul Template
-README][ct].
+README][ct]. Since Nomad v0.6.0, templates can be read as environment variables.
 
 ## `template` Parameters
 
 - `change_mode` `(string: "restart")` - Specifies the behavior Nomad should take
-  if the rendered template changes. The possible values are:
+  if the rendered template changes. Nomad will always write the new contents of
+  the template to the specified destination. The possible values below describe
+  Nomad's action after writing the template to disk.
 
   - `"noop"` - take no action (continue running the task)
   - `"restart"` - restart the task
@@ -66,14 +68,17 @@ README][ct].
 - `destination` `(string: <required>)` - Specifies the location where the
   resulting template should be rendered, relative to the task directory.
 
-* `left_delimiter` `(string: "{{")` - Specifies the left delimiter to use in the
+- `env` `(bool: false)` - Specifies the template should be read back in as
+  environment variables for the task. (See below)
+
+- `left_delimiter` `(string: "{{")` - Specifies the left delimiter to use in the
   template. The default is "{{" for some templates, it may be easier to use a
   different delimiter that does not conflict with the output file itself.
 
-- `perms` `(string: "666")` - Specifies the rendered template's permissions.
-  File permissions are given as octal of the unix file permissions rwxrwxrwx.
+- `perms` `(string: "644")` - Specifies the rendered template's permissions.
+  File permissions are given as octal of the Unix file permissions rwxrwxrwx.
 
-* `right_delimiter` `(string: "}}")` - Specifies the right delimiter to use in the
+- `right_delimiter` `(string: "}}")` - Specifies the right delimiter to use in the
   template. The default is "}}" for some templates, it may be easier to use a
   different delimiter that does not conflict with the output file itself.
 
@@ -84,7 +89,7 @@ README][ct].
   reference a template inside of a Docker container, for example.
 
 - `splay` `(string: "5s")` - Specifies a random amount of time to wait between
-  0ms and the given splay value before invoking the change mode. This is
+  0 ms and the given splay value before invoking the change mode. This is
   specified using a label suffix like "30s" or "1h", and is often used to
   prevent a thundering herd problem where all task instances restart at the same
   time.
@@ -114,6 +119,7 @@ template {
   ---
     bind_port:   {{ env "NOMAD_PORT_db" }}
     scratch_dir: {{ env "NOMAD_TASK_DIR" }}
+    node_id:     {{ env "node.unique.id" }}
     service_key: {{ key "service/my-key" }}
   EOH
 
@@ -155,10 +161,58 @@ template {
 }
 ```
 
+### Environment Variables
+
+Since v0.6.0 templates may be used to create environment variables for tasks.
+Env templates work exactly like other templates except once they're written,
+they're read back in as `KEY=value` pairs. Those key value pairs are included
+in the task's environment.
+
+For example the following template stanza:
+
+```hcl
+template {
+  data = <<EOH
+# Lines starting with a # are ignored
+
+# Empty lines are also ignored
+LOG_LEVEL="{{key "service/geo-api/log-verbosity"}}"
+API_KEY="{{with secret "secret/geo-api-key"}}{{.Data.key}}{{end}}"
+EOH
+
+  destination = "secrets/file.env"
+  env         = true
+}
+```
+
+The task's environment would then have environment variables like the
+following:
+
+```
+LOG_LEVEL=DEBUG
+API_KEY=12345678-1234-1234-1234-1234-123456789abc
+```
+
+This allows [12factor app](https://12factor.net/config) style environment
+variable based configuration while keeping all of the familiar features and
+semantics of Nomad templates.
+
+If a value may include newlines you should JSON encode it:
+
+```
+CERT_PEM={{ file "path/to/cert.pem" | toJSON }}
+```
+
+The parser will read the JSON string, so the `$CERT_PEM` environment variable
+will be identical to the contents of the file.
+
+For more details see [go-envparser's
+README](https://github.com/schmichael/go-envparse#readme).
+
 ## Client Configuration
 
 The `template` block has the following [client configuration
-options](/docs/agent/config.html#options):
+options](/docs/agent/configuration/client.html#options):
 
 * `template.allow_host_source` - Allows templates to specify their source
   template as an absolute path referencing host directories. Defaults to `true`.
