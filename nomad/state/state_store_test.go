@@ -13,6 +13,7 @@ import (
 	"github.com/hashicorp/nomad/helper"
 	"github.com/hashicorp/nomad/nomad/mock"
 	"github.com/hashicorp/nomad/nomad/structs"
+	"github.com/stretchr/testify/assert"
 )
 
 func testStateStore(t *testing.T) *StateStore {
@@ -1305,6 +1306,61 @@ func TestStateStore_DeleteJob_Job(t *testing.T) {
 	if watchFired(ws) {
 		t.Fatalf("bad")
 	}
+}
+
+func TestStateStore_DeleteJob_MultipleVersions(t *testing.T) {
+	state := testStateStore(t)
+	assert := assert.New(t)
+
+	// Create a job and mark it as stable
+	job := mock.Job()
+	job.Stable = true
+	job.Priority = 0
+
+	// Create a watchset so we can test that upsert fires the watch
+	ws := memdb.NewWatchSet()
+	_, err := state.JobVersionsByID(ws, job.ID)
+	assert.Nil(err)
+	assert.Nil(state.UpsertJob(1000, job))
+	assert.True(watchFired(ws))
+
+	var finalJob *structs.Job
+	for i := 1; i < 20; i++ {
+		finalJob = mock.Job()
+		finalJob.ID = job.ID
+		finalJob.Priority = i
+		assert.Nil(state.UpsertJob(uint64(1000+i), finalJob))
+	}
+
+	assert.Nil(state.DeleteJob(1001, job.ID))
+	assert.True(watchFired(ws))
+
+	ws = memdb.NewWatchSet()
+	out, err := state.JobByID(ws, job.ID)
+	assert.Nil(err)
+	assert.Nil(out)
+
+	index, err := state.Index("jobs")
+	assert.Nil(err)
+	assert.EqualValues(1001, index)
+
+	summary, err := state.JobSummaryByID(ws, job.ID)
+	assert.Nil(err)
+	assert.Nil(summary)
+
+	index, err = state.Index("job_summary")
+	assert.Nil(err)
+	assert.EqualValues(1001, index)
+
+	versions, err := state.JobVersionsByID(ws, job.ID)
+	assert.Nil(err)
+	assert.Len(versions, 0)
+
+	index, err = state.Index("job_summary")
+	assert.Nil(err)
+	assert.EqualValues(1001, index)
+
+	assert.False(watchFired(ws))
 }
 
 func TestStateStore_DeleteJob_ChildJob(t *testing.T) {
@@ -4728,11 +4784,11 @@ func TestJobSummary_UpdateClientStatus(t *testing.T) {
 	}
 }
 
-// Test that non-existant deployment can't be updated
-func TestStateStore_UpsertDeploymentStatusUpdate_NonExistant(t *testing.T) {
+// Test that non-existent deployment can't be updated
+func TestStateStore_UpsertDeploymentStatusUpdate_NonExistent(t *testing.T) {
 	state := testStateStore(t)
 
-	// Update the non-existant deployment
+	// Update the non-existent deployment
 	req := &structs.DeploymentStatusUpdateRequest{
 		DeploymentUpdate: &structs.DeploymentStatusUpdate{
 			DeploymentID: structs.GenerateUUID(),
@@ -4938,11 +4994,11 @@ func TestStateStore_UpdateJobStability(t *testing.T) {
 	}
 }
 
-// Test that non-existant deployment can't be promoted
-func TestStateStore_UpsertDeploymentPromotion_NonExistant(t *testing.T) {
+// Test that non-existent deployment can't be promoted
+func TestStateStore_UpsertDeploymentPromotion_NonExistent(t *testing.T) {
 	state := testStateStore(t)
 
-	// Promote the non-existant deployment
+	// Promote the non-existent deployment
 	req := &structs.ApplyDeploymentPromoteRequest{
 		DeploymentPromoteRequest: structs.DeploymentPromoteRequest{
 			DeploymentID: structs.GenerateUUID(),
@@ -5059,7 +5115,7 @@ func TestStateStore_UpsertDeploymentPromotion_NoCanaries(t *testing.T) {
 		t.Fatalf("bad: %v", err)
 	}
 	if !strings.Contains(err.Error(), "no canaries to promote") {
-		t.Fatalf("expect error promoting non-existant canaries: %v", err)
+		t.Fatalf("expect error promoting non-existent canaries: %v", err)
 	}
 }
 
@@ -5255,11 +5311,11 @@ func TestStateStore_UpsertDeploymentPromotion_Subset(t *testing.T) {
 	}
 }
 
-// Test that allocation health can't be set against a non-existant deployment
-func TestStateStore_UpsertDeploymentAllocHealth_NonExistant(t *testing.T) {
+// Test that allocation health can't be set against a non-existent deployment
+func TestStateStore_UpsertDeploymentAllocHealth_NonExistent(t *testing.T) {
 	state := testStateStore(t)
 
-	// Set health against the non-existant deployment
+	// Set health against the non-existent deployment
 	req := &structs.ApplyDeploymentAllocHealthRequest{
 		DeploymentAllocHealthRequest: structs.DeploymentAllocHealthRequest{
 			DeploymentID:         structs.GenerateUUID(),
@@ -5297,8 +5353,8 @@ func TestStateStore_UpsertDeploymentAllocHealth_Terminal(t *testing.T) {
 	}
 }
 
-// Test that allocation health can't be set against a non-existant alloc
-func TestStateStore_UpsertDeploymentAllocHealth_BadAlloc_NonExistant(t *testing.T) {
+// Test that allocation health can't be set against a non-existent alloc
+func TestStateStore_UpsertDeploymentAllocHealth_BadAlloc_NonExistent(t *testing.T) {
 	state := testStateStore(t)
 
 	// Insert a deployment

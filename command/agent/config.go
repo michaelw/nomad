@@ -20,6 +20,7 @@ import (
 	"github.com/hashicorp/nomad/helper"
 	"github.com/hashicorp/nomad/nomad"
 	"github.com/hashicorp/nomad/nomad/structs/config"
+	"github.com/hashicorp/nomad/version"
 )
 
 // Config is the configuration for the Nomad agent.
@@ -114,9 +115,7 @@ type Config struct {
 	DevMode bool `mapstructure:"-"`
 
 	// Version information is set at compilation time
-	Revision          string
-	Version           string
-	VersionPrerelease string
+	Version *version.VersionInfo
 
 	// List of config files that have been loaded (in order)
 	Files []string `mapstructure:"-"`
@@ -374,7 +373,7 @@ type Telemetry struct {
 	// check, it will *NOT* be activated. This setting overrides that behavior.
 	// Default: "false"
 	CirconusCheckForceMetricActivation string `mapstructure:"circonus_check_force_metric_activation"`
-	// CirconusCheckInstanceID serves to uniquely identify the metrics comming from this "instance".
+	// CirconusCheckInstanceID serves to uniquely identify the metrics coming from this "instance".
 	// It can be used to maintain metric continuity with transient or ephemeral instances as
 	// they move around within an infrastructure.
 	// Default: hostname:app
@@ -441,7 +440,7 @@ type Resources struct {
 }
 
 // ParseReserved expands the ReservedPorts string into a slice of port numbers.
-// The supported syntax is comma seperated integers or ranges seperated by
+// The supported syntax is comma separated integers or ranges separated by
 // hyphens. For example, "80,120-150,160"
 func (r *Resources) ParseReserved() error {
 	parts := strings.Split(r.ReservedPorts, ",")
@@ -572,6 +571,7 @@ func DefaultConfig() *Config {
 			collectionInterval: 1 * time.Second,
 		},
 		TLSConfig: &config.TLSConfig{},
+		Version:   version.GetVersion(),
 	}
 }
 

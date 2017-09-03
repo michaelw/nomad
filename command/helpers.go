@@ -12,6 +12,7 @@ import (
 	gg "github.com/hashicorp/go-getter"
 	"github.com/hashicorp/nomad/api"
 	"github.com/hashicorp/nomad/jobspec"
+	"github.com/posener/complete"
 
 	"github.com/ryanuber/columnize"
 )
@@ -291,4 +292,41 @@ func (j *JobGetter) ApiJob(jpath string) (*api.Job, error) {
 	}
 
 	return jobStruct, nil
+}
+
+// COMPAT: Remove in 0.7.0
+// Nomad 0.6.0 introduces the submit time field so CLI's interacting with
+// older versions of Nomad would SEGFAULT as reported here:
+// https://github.com/hashicorp/nomad/issues/2918
+// getSubmitTime returns a submit time of the job converting to time.Time
+func getSubmitTime(job *api.Job) time.Time {
+	if job.SubmitTime != nil {
+		return time.Unix(0, *job.SubmitTime)
+	}
+
+	return time.Time{}
+}
+
+// COMPAT: Remove in 0.7.0
+// Nomad 0.6.0 introduces job Versions so CLI's interacting with
+// older versions of Nomad would SEGFAULT as reported here:
+// https://github.com/hashicorp/nomad/issues/2918
+// getVersion returns a version of the job in safely.
+func getVersion(job *api.Job) uint64 {
+	if job.Version != nil {
+		return *job.Version
+	}
+
+	return 0
+}
+
+// mergeAutocompleteFlags is used to join multiple flag completion sets.
+func mergeAutocompleteFlags(flags ...complete.Flags) complete.Flags {
+	merged := make(map[string]complete.Predictor, len(flags))
+	for _, f := range flags {
+		for k, v := range f {
+			merged[k] = v
+		}
+	}
+	return merged
 }

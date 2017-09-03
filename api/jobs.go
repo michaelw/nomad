@@ -372,11 +372,11 @@ func (u *UpdateStrategy) Merge(o *UpdateStrategy) {
 }
 
 func (u *UpdateStrategy) Canonicalize() {
-	if u.MaxParallel == nil {
-		u.MaxParallel = helper.IntToPtr(0)
-	}
-
 	d := structs.DefaultUpdateStrategy
+
+	if u.MaxParallel == nil {
+		u.MaxParallel = helper.IntToPtr(d.MaxParallel)
+	}
 
 	if u.Stagger == nil {
 		u.Stagger = helper.TimeToPtr(d.Stagger)
@@ -709,7 +709,7 @@ type JobValidateResponse struct {
 	// ValidationErrors is a list of validation errors
 	ValidationErrors []string
 
-	// Error is a string version of any error that may have occured
+	// Error is a string version of any error that may have occurred
 	Error string
 
 	// Warnings contains any warnings about the given job. These may include

@@ -110,20 +110,22 @@ type Config struct {
 	TLSConfig *TLSConfig
 }
 
-// CopyConfig copies the configuration with a new address
-func (c *Config) CopyConfig(address string, tlsEnabled bool) *Config {
+// ClientConfig copies the configuration with a new client address, region, and
+// whether the client has TLS enabled.
+func (c *Config) ClientConfig(region, address string, tlsEnabled bool) *Config {
 	scheme := "http"
 	if tlsEnabled {
 		scheme = "https"
 	}
 	config := &Config{
 		Address:    fmt.Sprintf("%s://%s", scheme, address),
-		Region:     c.Region,
+		Region:     region,
 		HttpClient: c.HttpClient,
 		HttpAuth:   c.HttpAuth,
 		WaitTime:   c.WaitTime,
-		TLSConfig:  c.TLSConfig,
+		TLSConfig:  c.TLSConfig.Copy(),
 	}
+	config.TLSConfig.TLSServerName = fmt.Sprintf("client.%s.nomad", c.Region)
 
 	return config
 }
@@ -151,6 +153,16 @@ type TLSConfig struct {
 
 	// Insecure enables or disables SSL verification
 	Insecure bool
+}
+
+func (t *TLSConfig) Copy() *TLSConfig {
+	if t == nil {
+		return nil
+	}
+
+	nt := new(TLSConfig)
+	*nt = *t
+	return nt
 }
 
 // DefaultConfig returns a default configuration for the client
@@ -283,6 +295,30 @@ func NewClient(config *Config) (*Client, error) {
 // SetRegion sets the region to forward API requests to.
 func (c *Client) SetRegion(region string) {
 	c.config.Region = region
+}
+
+// GetNodeClient returns a new Client that will dial the specified node. If the
+// QueryOptions is set, its region will be used.
+func (c *Client) GetNodeClient(nodeID string, q *QueryOptions) (*Client, error) {
+	node, _, err := c.Nodes().Info(nodeID, q)
+	if err != nil {
+		return nil, err
+	}
+	if node.Status == "down" {
+		return nil, NodeDownErr
+	}
+	if node.HTTPAddr == "" {
+		return nil, fmt.Errorf("http addr of node %q (%s) is not advertised", node.Name, nodeID)
+	}
+
+	region := c.config.Region
+	if q != nil && q.Region != "" {
+		region = q.Region
+	}
+
+	// Get an API client for the node
+	conf := c.config.ClientConfig(region, node.HTTPAddr, node.TLSEnabled)
+	return NewClient(conf)
 }
 
 // request is used to help build up a request
@@ -479,7 +515,7 @@ func (c *Client) rawQuery(endpoint string, q *QueryOptions) (io.ReadCloser, erro
 	return resp.Body, nil
 }
 
-// Query is used to do a GET request against an endpoint
+// query is used to do a GET request against an endpoint
 // and deserialize the response into an interface using
 // standard Nomad conventions.
 func (c *Client) query(endpoint string, out interface{}, q *QueryOptions) (*QueryMeta, error) {
@@ -488,6 +524,32 @@ func (c *Client) query(endpoint string, out interface{}, q *QueryOptions) (*Quer
 		return nil, err
 	}
 	r.setQueryOptions(q)
+	rtt, resp, err := requireOK(c.doRequest(r))
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	qm := &QueryMeta{}
+	parseQueryMeta(resp, qm)
+	qm.RequestTime = rtt
+
+	if err := decodeBody(resp, out); err != nil {
+		return nil, err
+	}
+	return qm, nil
+}
+
+// putQuery is used to do a PUT request when doing a read against an endpoint
+// and deserialize the response into an interface using standard Nomad
+// conventions.
+func (c *Client) putQuery(endpoint string, in, out interface{}, q *QueryOptions) (*QueryMeta, error) {
+	r, err := c.newRequest("PUT", endpoint)
+	if err != nil {
+		return nil, err
+	}
+	r.setQueryOptions(q)
+	r.obj = in
 	rtt, resp, err := requireOK(c.doRequest(r))
 	if err != nil {
 		return nil, err

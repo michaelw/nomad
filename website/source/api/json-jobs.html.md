@@ -1,7 +1,7 @@
 ---
 layout: api
 page_title: JSON Job Specification - HTTP API
-sidebar_current: api-jobs
+sidebar_current: api-json-jobs
 description: |-
   Jobs can also be specified via the HTTP API using a JSON format. This guide
   discusses the job specification in JSON format.
@@ -18,177 +18,106 @@ $ nomad run -output my-job.nomad
 
 ## Syntax
 
-Below is an example of a JSON object that submits a `periodic` job to Nomad:
+Below is the JSON representation of the job outputed by `$ nomad init`:
 
 ```json
 {
-  "Job": {
-    "Region": "global",
-    "ID": "example",
-    "Name": "example",
-    "Type": "batch",
-    "Priority": 50,
-    "AllAtOnce": false,
-    "Datacenters": [
-      "dc1"
-    ],
-    "Constraints": [
-      {
-        "LTarget": "${attr.kernel.name}",
-        "RTarget": "linux",
-        "Operand": "="
-      }
-    ],
-    "TaskGroups": [
-      {
-        "Name": "cache",
-        "Count": 1,
-        "Constraints": null,
-        "Tasks": [
-          {
-            "Name": "redis",
-            "Driver": "docker",
-            "User": "foo-user",
-            "Config": {
-              "image": "redis:latest",
-              "port_map": [
-                {
-                  "db": 6379
-                }
-              ]
-            },
-            "Constraints": null,
-            "Env": {
-              "foo": "bar",
-              "baz": "pipe"
-            },
-            "Services": [
-              {
-                "Name": "cache-redis",
-                "Tags": [
-                  "global",
-                  "cache"
-                ],
-                "PortLabel": "db",
-                "Checks": [
-                  {
-                    "Id": "",
-                    "Name": "alive",
-                    "Type": "tcp",
-                    "Command": "",
-                    "Args": null,
-                    "Path": "",
-                    "Protocol": "",
-                    "Interval": 10000000000,
-                    "Timeout": 2000000000
-                  }
-                ]
-              }
-            ],
-            "Update": {
-              "Stagger": 10000000000,
-              "MaxParallel": 3,
-              "HealthCheck": "checks",
-              "MinHealthyTime": 15000000000,
-              "HealthyDeadline": 180000000000,
-              "AutoRevert": false,
-              "Canary": 1
-            },
-            "Vault": {
-              "Policies": [
-                "policy-name"
-              ],
-              "Env": true,
-              "ChangeMode": "restart",
-              "ChangeSignal": ""
-            },
-            "Resources": {
-              "CPU": 500,
-              "MemoryMB": 256,
-              "IOPS": 0,
-              "Networks": [
-                {
-                  "ReservedPorts": [
-                    {
-                      "Label": "rpc",
-                      "Value": 25566
-                    }
-                  ],
-                  "DynamicPorts": [
-                    {
-                      "Label": "db"
-                    }
-                  ],
-                  "MBits": 10
-                }
-              ]
-            },
-            "Meta": {
-              "foo": "bar",
-              "baz": "pipe"
-            },
-            "KillTimeout": 5000000000,
-            "LogConfig": {
-              "MaxFiles": 10,
-              "MaxFileSizeMB": 10
-            },
-            "Templates": [
-              {
-                "SourcePath": "local/config.conf.tpl",
-                "DestPath": "local/config.conf",
-                "EmbeddedTmpl": "",
-                "ChangeMode": "signal",
-                "ChangeSignal": "SIGUSR1",
-                "Splay": 5000000000
-              }
-            ],
-            "Artifacts": [
-              {
-                "GetterSource": "http://foo.com/artifact.tar.gz",
-                "GetterOptions": {
-                  "checksum": "md5:c4aa853ad2215426eb7d70a21922e794"
-                },
-                "RelativeDest": "local/"
-              }
-            ],
-            "DispatchPayload": {
-              "File": "config.json"
-            }
-          }
+    "Job": {
+        "ID": "example",
+        "Name": "example",
+        "Type": "service",
+        "Priority": 50,
+        "Datacenters": [
+            "dc1"
         ],
-        "RestartPolicy": {
-          "Interval": 300000000000,
-          "Attempts": 10,
-          "Delay": 25000000000,
-          "Mode": "delay"
-        },
-        "Meta": {
-          "foo": "bar",
-          "baz": "pipe"
+        "TaskGroups": [{
+            "Name": "cache",
+            "Count": 1,
+            "Tasks": [{
+                "Name": "redis",
+                "Driver": "docker",
+                "User": "",
+                "Config": {
+                    "image": "redis:3.2",
+                    "port_map": [{
+                        "db": 6379
+                    }]
+                },
+                "Services": [{
+                    "Id": "",
+                    "Name": "global-redis-check",
+                    "Tags": [
+                        "global",
+                        "cache"
+                    ],
+                    "PortLabel": "db",
+                    "AddressMode": "",
+                    "Checks": [{
+                        "Id": "",
+                        "Name": "alive",
+                        "Type": "tcp",
+                        "Command": "",
+                        "Args": null,
+                        "Header": {},
+                        "Method": "",
+                        "Path": "",
+                        "Protocol": "",
+                        "PortLabel": "",
+                        "Interval": 10000000000,
+                        "Timeout": 2000000000,
+                        "InitialStatus": "",
+                        "TLSSkipVerify": false
+                    }]
+                }],
+                "Resources": {
+                    "CPU": 500,
+                    "MemoryMB": 256,
+                    "Networks": [{
+                        "Device": "",
+                        "CIDR": "",
+                        "IP": "",
+                        "MBits": 10,
+                        "DynamicPorts": [{
+                            "Label": "db",
+                            "Value": 0
+                        }]
+                    }]
+                },
+                "Leader": false
+            }],
+            "RestartPolicy": {
+                "Interval": 300000000000,
+                "Attempts": 10,
+                "Delay": 25000000000,
+                "Mode": "delay"
+            },
+            "EphemeralDisk": {
+                "SizeMB": 300
+            }
+        }],
+        "Update": {
+            "MaxParallel": 1,
+            "MinHealthyTime": 10000000000,
+            "HealthyDeadline": 180000000000,
+            "AutoRevert": false,
+            "Canary": 0
         }
-      }
-    ],
-    "Periodic": {
-      "Enabled": true,
-      "Spec": "- *",
-      "SpecType": "cron",
-      "ProhibitOverlap": true
-    },
-    "Meta": {
-      "foo": "bar",
-      "baz": "pipe"
-    },
-    "ParameterizedJob": {
-      "Payload": "required",
-      "MetaRequired": [
-        "foo"
-      ],
-      "MetaOptional": [
-        "bar"
-      ]
-    },
-    "Payload": null
-  }
+    }
+}
+```
+
+The example JSON could be submitted as a job using the following:
+
+```text
+$ curl -XPUT @d example.json http://127.0.0.1:4646/v1/job/example
+{
+  "EvalID": "5d6ded54-0b2a-8858-6583-be5f476dec9d",
+  "EvalCreateIndex": 12,
+  "JobModifyIndex": 11,
+  "Warnings": "",
+  "Index": 12,
+  "LastContact": 0,
+  "KnownLeader": false
 }
 ```
 
@@ -417,11 +346,17 @@ The `Task` object supports the following keys:
 
          - `Name`: The name of the health check.
 
+	 - `Header`: Headers for HTTP checks. Should be an object where the
+	   values are an array of values. Headers will be written once for each
+           value.
+
          - `Interval`: This indicates the frequency of the health checks that
            Consul will perform.
 
          - `Timeout`: This indicates how long Consul will wait for a health
            check query to succeed.
+
+         - `Method`: The HTTP method to use for HTTP checks. Defaults to GET.
 
          - `Path`: The path of the HTTP endpoint which Consul will query to query
            the health of a service if the type of the check is `http`. Nomad
@@ -439,6 +374,12 @@ The `Task` object supports the following keys:
 
 	 - `TLSSkipVerify`: If true, Consul will not attempt to verify the
 	   certificate when performing HTTPS checks. Requires Consul >= 0.7.2.
+
+- `ShutdownDelay` - Specifies the duration to wait when killing a task between
+  removing it from Consul and sending it a shutdown signal. Ideally services
+  would fail healthchecks once they receive a shutdown signal. Alternatively
+  `ShutdownDelay` may be set to give in flight requests time to complete before
+  shutting down.
 
 - `Templates` - Specifies the set of [`Template`](#template) objects to render for the task.
   Templates can be used to inject both static and dynamic configuration with
@@ -598,7 +539,7 @@ The `Constraint` object supports the following keys:
   - `set_contains` - Allows the `RTarget` to be a comma separated list of values
     that should be contained in the LTarget's value.
 
-  - `distinct_host` - If set, the scheduler will not co-locate any task groups on the same
+  - `distinct_hosts` - If set, the scheduler will not co-locate any task groups on the same
         machine. This can be specified as a job constraint which applies the
         constraint to all task groups in the job, or as a task group constraint which
         scopes the effect to just that group. The constraint may not be
@@ -610,7 +551,9 @@ The `Constraint` object supports the following keys:
         omitted.
 
   - `distinct_property` - If set, the scheduler selects nodes that have a
-        distinct value of the specified property for each allocation. This can
+        distinct value of the specified property. The `RTarget` specifies how
+        many allocations are allowed to share the value of a property. The
+        `RTarget` must be 1 or greater and if omitted, defaults to 1. This can
         be specified as a job constraint which applies the constraint to all
         task groups in the job, or as a task group constraint which scopes the
         effect to just that group. The constraint may not be specified at the
@@ -807,6 +750,14 @@ README][ct].
   splay value before invoking the change mode. Should be specified in
   nanoseconds.
 
+- `VaultGrace` - Specifies the grace period between lease renewal and secret
+  re-acquisition. When renewing a secret, if the remaining lease is less than or
+  equal to the configured grace, the template will request a new credential.
+  This prevents Vault from revoking the secret at its expiration and the task
+  having a stale secret. If the grace is set to a value that is higher than your
+  default TTL or max TTL, the template will always read a new secret. If the
+  task defines several templates, the `vault_grace` will be set to the lowest
+  value across all the templates.
 
 ```json
 {

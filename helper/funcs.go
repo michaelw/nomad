@@ -76,6 +76,20 @@ func IntMin(a, b int) int {
 	return b
 }
 
+func IntMax(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+func Uint64Max(a, b uint64) uint64 {
+	if a > b {
+		return a
+	}
+	return b
+}
+
 // MapStringStringSliceValueSet returns the set of values in a map[string][]string
 func MapStringStringSliceValueSet(m map[string][]string) []string {
 	set := make(map[string]struct{})
@@ -159,6 +173,19 @@ func CopyMapStringString(m map[string]string) map[string]string {
 	return c
 }
 
+func CopyMapStringStruct(m map[string]struct{}) map[string]struct{} {
+	l := len(m)
+	if l == 0 {
+		return nil
+	}
+
+	c := make(map[string]struct{}, l)
+	for k, _ := range m {
+		c[k] = struct{}{}
+	}
+	return c
+}
+
 func CopyMapStringInt(m map[string]int) map[string]int {
 	l := len(m)
 	if l == 0 {
@@ -181,6 +208,21 @@ func CopyMapStringFloat64(m map[string]float64) map[string]float64 {
 	c := make(map[string]float64, l)
 	for k, v := range m {
 		c[k] = v
+	}
+	return c
+}
+
+// CopyMapStringSliceString copies a map of strings to string slices such as
+// http.Header
+func CopyMapStringSliceString(m map[string][]string) map[string][]string {
+	l := len(m)
+	if l == 0 {
+		return nil
+	}
+
+	c := make(map[string][]string, l)
+	for k, v := range m {
+		c[k] = CopySliceString(v)
 	}
 	return c
 }

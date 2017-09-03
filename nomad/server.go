@@ -130,7 +130,7 @@ type Server struct {
 	blockedEvals *BlockedEvals
 
 	// deploymentWatcher is used to watch deployments and their allocations and
-	// make the required calls to continue to transistion the deployment.
+	// make the required calls to continue to transition the deployment.
 	deploymentWatcher *deploymentwatcher.Watcher
 
 	// evalBroker is used to manage the in-progress evaluations
@@ -174,6 +174,7 @@ type endpoints struct {
 	Alloc      *Alloc
 	Deployment *Deployment
 	Region     *Region
+	Search     *Search
 	Periodic   *Periodic
 	System     *System
 	Operator   *Operator
@@ -725,6 +726,7 @@ func (s *Server) setupRPC(tlsWrap tlsutil.RegionWrapper) error {
 	s.endpoints.Region = &Region{s}
 	s.endpoints.Status = &Status{s}
 	s.endpoints.System = &System{s}
+	s.endpoints.Search = &Search{s}
 
 	// Register the handlers
 	s.rpcServer.Register(s.endpoints.Alloc)
@@ -738,6 +740,7 @@ func (s *Server) setupRPC(tlsWrap tlsutil.RegionWrapper) error {
 	s.rpcServer.Register(s.endpoints.Region)
 	s.rpcServer.Register(s.endpoints.Status)
 	s.rpcServer.Register(s.endpoints.System)
+	s.rpcServer.Register(s.endpoints.Search)
 
 	list, err := net.ListenTCP("tcp", s.config.RPCAddr)
 	if err != nil {
@@ -1119,7 +1122,7 @@ func (s *Server) Stats() map[string]map[string]string {
 	return stats
 }
 
-// Region retuns the region of the server
+// Region returns the region of the server
 func (s *Server) Region() string {
 	return s.config.Region
 }

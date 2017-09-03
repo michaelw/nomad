@@ -8,11 +8,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dustin/go-humanize"
+	humanize "github.com/dustin/go-humanize"
 	"github.com/mitchellh/colorstring"
 
 	"github.com/hashicorp/nomad/api"
+	"github.com/hashicorp/nomad/api/contexts"
 	"github.com/hashicorp/nomad/client"
+	"github.com/posener/complete"
 )
 
 type AllocStatusCommand struct {
@@ -56,6 +58,27 @@ Alloc Status Options:
 
 func (c *AllocStatusCommand) Synopsis() string {
 	return "Display allocation status information and metadata"
+}
+
+func (c *AllocStatusCommand) AutocompleteFlags() complete.Flags {
+	return mergeAutocompleteFlags(c.Meta.AutocompleteFlags(FlagSetClient),
+		complete.Flags{
+			"-short":   complete.PredictNothing,
+			"-verbose": complete.PredictNothing,
+			"-json":    complete.PredictNothing,
+			"-t":       complete.PredictAnything,
+		})
+}
+
+func (c *AllocStatusCommand) AutocompleteArgs() complete.Predictor {
+	return complete.PredictFunc(func(a complete.Args) []string {
+		client, _ := c.Meta.Client()
+		resp, _, err := client.Search().PrefixSearch(a.Last, contexts.Allocs, nil)
+		if err != nil {
+			return []string{}
+		}
+		return resp.Matches[contexts.Allocs]
+	})
 }
 
 func (c *AllocStatusCommand) Run(args []string) int {
@@ -199,7 +222,7 @@ func formatAllocBasicInfo(alloc *api.Allocation, client *api.Client, uuidLength 
 		fmt.Sprintf("Name|%s", alloc.Name),
 		fmt.Sprintf("Node ID|%s", limit(alloc.NodeID, uuidLength)),
 		fmt.Sprintf("Job ID|%s", alloc.JobID),
-		fmt.Sprintf("Job Version|%d", *alloc.Job.Version),
+		fmt.Sprintf("Job Version|%d", getVersion(alloc.Job)),
 		fmt.Sprintf("Client Status|%s", alloc.ClientStatus),
 		fmt.Sprintf("Client Description|%s", alloc.ClientDescription),
 		fmt.Sprintf("Desired Status|%s", alloc.DesiredStatus),
@@ -398,6 +421,9 @@ func (c *AllocStatusCommand) outputTaskStatus(state *api.TaskState) {
 			desc = event.DriverMessage
 		case api.TaskLeaderDead:
 			desc = "Leader Task in Group dead"
+		case api.TaskGenericMessage:
+			event.Type = event.GenericSource
+			desc = event.Message
 		}
 
 		// Reverse order so we are sorted by time

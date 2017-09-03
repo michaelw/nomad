@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"github.com/hashicorp/nomad/api"
+	"github.com/hashicorp/nomad/api/contexts"
+	"github.com/posener/complete"
 )
 
 type EvalStatusCommand struct {
@@ -44,6 +46,27 @@ Eval Status Options:
 
 func (c *EvalStatusCommand) Synopsis() string {
 	return "Display evaluation status and placement failure reasons"
+}
+
+func (c *EvalStatusCommand) AutocompleteFlags() complete.Flags {
+	return mergeAutocompleteFlags(c.Meta.AutocompleteFlags(FlagSetClient),
+		complete.Flags{
+			"-json":    complete.PredictNothing,
+			"-monitor": complete.PredictNothing,
+			"-t":       complete.PredictAnything,
+			"-verbose": complete.PredictNothing,
+		})
+}
+
+func (c *EvalStatusCommand) AutocompleteArgs() complete.Predictor {
+	return complete.PredictFunc(func(a complete.Args) []string {
+		client, _ := c.Meta.Client()
+		resp, _, err := client.Search().PrefixSearch(a.Last, contexts.Evals, nil)
+		if err != nil {
+			return []string{}
+		}
+		return resp.Matches[contexts.Evals]
+	})
 }
 
 func (c *EvalStatusCommand) Run(args []string) int {

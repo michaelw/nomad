@@ -203,7 +203,7 @@ func (w *deploymentWatcher) PromoteDeployment(
 func (w *deploymentWatcher) PauseDeployment(
 	req *structs.DeploymentPauseRequest,
 	resp *structs.DeploymentUpdateResponse) error {
-	// Determine the status we should transistion to and if we need to create an
+	// Determine the status we should transition to and if we need to create an
 	// evaluation
 	status, desc := structs.DeploymentStatusPaused, structs.DeploymentStatusDescriptionPaused
 	var eval *structs.Evaluation
@@ -257,6 +257,8 @@ func (w *deploymentWatcher) FailDeployment(
 
 		if rollbackJob != nil {
 			desc = structs.DeploymentStatusDescriptionRollback(desc, rollbackJob.Version)
+		} else {
+			desc = structs.DeploymentStatusDescriptionNoRollbackTarget(desc)
 		}
 	}
 
@@ -361,6 +363,8 @@ func (w *deploymentWatcher) watch() {
 				// version N
 				if j != nil {
 					desc = structs.DeploymentStatusDescriptionRollback(desc, j.Version)
+				} else {
+					desc = structs.DeploymentStatusDescriptionNoRollbackTarget(desc)
 				}
 			}
 
