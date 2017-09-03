@@ -1,3 +1,11 @@
+nomad (0.6.2-1instart1) precise; urgency=low
+
+  * new upstream release 0.6.2
+  * added missing pkg-config build-dep
+  * added ./go/bin to PATH (for gometalinter)
+
+ -- Michael Weber <mweber@instartlogic.com>  Sun, 03 Sep 2017 13:02:12 -0700
+
 nomad (0.6.0-1instart1) xenial; urgency=low
 
   * new upstream release 0.6.0

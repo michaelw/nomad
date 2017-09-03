@@ -5,6 +5,7 @@
 
 include /usr/share/dpkg/default.mk
 
+export PATH := $(CURDIR)/go/bin:$(PATH)
 export GOMAXPROCS=1
 export DEB_BUILD_MAINT_OPTIONS = hardening=+all
 export DH_GOLANG_EXCLUDES = demo
@@ -19,7 +20,6 @@ export DH_GOLANG_INSTALL_EXTRA = \
 GIT_COMMIT := $(shell git rev-parse HEAD)
 GIT_DIRTY  := $(shell test -n "`git status --porcelain`" && echo "+CHANGES" || true)
 LDFLAG      = "main.GitCommit=${GIT_COMMIT}${GIT_DIRTY}"
-
 
 %:
 	dh $@ --buildsystem=golang --with=golang,systemd --builddirectory=_build --parallel
