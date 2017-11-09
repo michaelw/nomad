@@ -1,3 +1,9 @@
+nomad (0.7.0-1instart1) precise; urgency=low
+
+  * new upstream release 0.7.0
+
+ -- Michael Weber <mweber@instartlogic.com>  Wed, 08 Nov 2017 20:06:19 -0800
+
 nomad (0.6.3-1instart1) precise; urgency=low
 
   * new upstream release 0.6.3
