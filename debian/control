@@ -7,6 +7,8 @@ Build-Depends: debhelper (>= 9),
  dh-systemd,
  dh-golang,
  git,
+ zip,
+ nodejs (>= 8),
  ca-certificates,
  pkg-config,
  golang-go (>= 2:1.9~)

@@ -1,1 +1,1 @@
-usr/bin/nomad
+pkg/linux_amd64/nomad usr/bin

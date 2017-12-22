@@ -5,7 +5,8 @@
 
 include /usr/share/dpkg/default.mk
 
-export PATH := $(CURDIR)/go/bin:$(PATH)
+export GOPATH := $(CURDIR)/go
+export PATH   := $(GOPATH)/bin:$(CURDIR)/ui/node_modules/yarn/bin:$(PATH)
 export GOMAXPROCS=1
 export DEB_BUILD_MAINT_OPTIONS = hardening=+all
 export DH_GOLANG_EXCLUDES = demo
@@ -16,26 +17,21 @@ export DH_GOLANG_INSTALL_EXTRA = \
     command/agent/config-test-fixtures \
     jobspec/test-fixtures
 
-# Get the git commit
-GIT_COMMIT := $(shell git rev-parse HEAD)
-GIT_DIRTY  := $(shell test -n "`git status --porcelain`" && echo "+CHANGES" || true)
-LDFLAG      = "main.GitCommit=${GIT_COMMIT}${GIT_DIRTY}"
-
 %:
 	dh $@ --buildsystem=golang --with=golang,systemd --builddirectory=_build --parallel
 
 override_dh_auto_build:
-	mkdir -p go/src/github.com/hashicorp usr/bin
-	ln -sfT $(CURDIR) go/src/github.com/hashicorp/nomad
-	cd go/src/github.com/hashicorp/nomad && make bootstrap
-	cd go/src/github.com/hashicorp/nomad && go build -ldflags "-X $(LDFLAG)" -o $(CURDIR)/usr/bin/nomad
+	mkdir -p go/src/github.com/hashicorp
+	ln -sfT $(CURDIR) $(GOPATH)/src/github.com/hashicorp/nomad
+	cd $(GOPATH)/src/github.com/hashicorp/nomad && make bootstrap
+	cd $(GOPATH)/src/github.com/hashicorp/nomad && make release ALL_TARGETS=linux_amd64
 
 # no tests until we figure out how to run the test suite without sudo
 override_dh_auto_test:
 
 override_dh_clean:
 	dh_clean
-	$(RM) -r _build go usr/bin
+	$(RM) -r _build ui/node_modules go
 
 override_dh_auto_install:
 	dh_auto_install --destdir=debian/tmp

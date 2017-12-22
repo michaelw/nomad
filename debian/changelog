@@ -1,3 +1,10 @@
+nomad (0.7.1-1instart1) precise; urgency=low
+
+  * new upstream release 0.7.1
+  * enable UI building (switching to "release" builds)
+
+ -- Michael Weber <mweber@instartlogic.com>  Fri, 22 Dec 2017 00:43:49 -0800
+
 nomad (0.7.0-1instart1) precise; urgency=low
 
   * new upstream release 0.7.0
