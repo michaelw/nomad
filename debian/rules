@@ -24,7 +24,7 @@ override_dh_auto_build:
 	mkdir -p go/src/github.com/hashicorp
 	ln -sfT $(CURDIR) $(GOPATH)/src/github.com/hashicorp/nomad
 	cd $(GOPATH)/src/github.com/hashicorp/nomad && make bootstrap
-	cd $(GOPATH)/src/github.com/hashicorp/nomad && make release ALL_TARGETS=linux_amd64
+	cd $(GOPATH)/src/github.com/hashicorp/nomad && make release ALL_TARGETS=linux_amd64 GO_TAGS=
 
 # no tests until we figure out how to run the test suite without sudo
 override_dh_auto_test:
