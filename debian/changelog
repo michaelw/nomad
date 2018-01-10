@@ -1,3 +1,9 @@
+nomad (0.7.1-1instart2) precise; urgency=low
+
+  * replace --remove-pidfile, which is not supported on precise
+
+ -- Michael Weber <mweber@instartlogic.com>  Wed, 10 Jan 2018 15:35:05 -0800
+
 nomad (0.7.1-1instart1) precise; urgency=low
 
   * new upstream release 0.7.1

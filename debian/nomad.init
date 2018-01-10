@@ -62,7 +62,7 @@ case "$1" in
     ;;
     stop)
         _ev_ log_action_begin_msg \"Stopping $NAME\"
-        R=$(start-stop-daemon --stop --oknodo --user $DAEMON_USER --pidfile $PIDFILE --remove-pidfile --retry=$RETRY 2>&1)
+        R=$(start-stop-daemon --stop --oknodo --user $DAEMON_USER --pidfile $PIDFILE --retry=$RETRY 2>&1)
         _ev_ log_action_end_msg $? \"$R\"
     ;;
     status)
@@ -72,8 +72,9 @@ case "$1" in
     reload)
         _ev_ log_action_begin_msg \"Reloading $NAME configuration\"
 #        killproc -p $PIDFILE "$DAEMON" SIGHUP
-#        start-stop-daemon --stop --signal HUP --pidfile "${PIDFILE}" --quiet
-        [ -r "${PIDFILE}" ] && R=$(pkill --signal HUP --parent $(cat "${PIDFILE}") --oldest $NAME 2>&1)
+        start-stop-daemon --stop --signal HUP --pidfile "${PIDFILE}" --quiet
+#        [ -r "${PIDFILE}" ] && R=$(pkill --signal HUP --parent $(cat "${PIDFILE}") --oldest $NAME 2>&1)
+        rm -f "$PIDFILE"
         _ev_ log_action_end_msg $? \"$R\"
     ;;
     restart|force-reload)
